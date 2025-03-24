@@ -1,230 +1,606 @@
+
+
+
+# import numpy as np
+# import json
+# import os
+# import google.generativeai as genai
+# from scipy.spatial.distance import cosine
+
+# class NDISAssistantBot:
+#     def __init__(self, embeddings_path, api_key, budget_file_path, top_k=5, similarity_threshold=0.6):
+#         """
+#         Initialize the NDIS Assistant Bot with knowledge base and budget information.
+#         """
+#         # Load necessary data
+#         self.load_embeddings(embeddings_path)
+#         self.load_budget(budget_file_path)
+        
+#         # Configure API
+#         genai.configure(api_key=api_key)
+#         self.embedding_model = "models/embedding-001"
+#         self.generation_model = "models/gemini-2.0-flash"
+        
+#         # Search parameters
+#         self.top_k = top_k
+#         self.similarity_threshold = similarity_threshold
+#         self.conversation_history = []
+        
+#         print(f"NDIS Assistant initialized successfully")
+
+#     def load_embeddings(self, embeddings_path):
+#         """
+#         Load knowledge base embeddings and metadata.
+#         """
+#         try:
+#             data = np.load(embeddings_path, allow_pickle=True)
+#             self.page_ids = data['page_ids'].tolist()
+#             self.embeddings = data['embeddings']
+            
+#             # Handle metadata
+#             metadata_raw = data['metadata']
+#             if isinstance(metadata_raw, np.ndarray) and metadata_raw.size > 0:
+#                 metadata_str = metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0]
+#             else:
+#                 metadata_str = metadata_raw
+            
+#             self.metadata = json.loads(metadata_str)
+#             print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents")
+#         except Exception as e:
+#             print(f"Error loading knowledge base: {str(e)}")
+#             raise
+
+#     def load_budget(self, budget_file_path):
+#         """
+#         Load user's NDIS budget information.
+#         """
+#         try:
+#             if os.path.exists(budget_file_path):
+#                 with open(budget_file_path, 'r') as file:
+#                     self.budget_info = file.read()
+#                 print("Budget information loaded successfully")
+#             else:
+#                 self.budget_info = "No budget information available."
+#                 print(f"Warning: Budget file not found at {budget_file_path}")
+#         except Exception as e:
+#             print(f"Error loading budget: {str(e)}")
+#             self.budget_info = "Error loading budget information."
+
+#     def get_embedding(self, query):
+#         """
+#         Get embedding for text using Gemini API.
+#         """
+#         try:
+#             embedding_result = genai.embed_content(
+#                 model=self.embedding_model,
+#                 content=query,
+#                 task_type="retrieval_query",
+#             )
+#             return np.array(embedding_result["embedding"])
+#         except Exception as e:
+#             print(f"Error generating embedding: {str(e)}")
+#             raise
+
+#     def find_relevant_content(self, query):
+#         """
+#         Find relevant content from knowledge base for a query.
+#         """
+#         try:
+#             # Get query embedding
+#             query_embedding = self.get_embedding(query)
+            
+#             # Calculate similarities
+#             similarities = []
+#             for i, page_id in enumerate(self.page_ids):
+#                 similarity = 1 - cosine(query_embedding, self.embeddings[i])
+#                 similarities.append((page_id, similarity))
+            
+#             # Sort by similarity
+#             similarities.sort(key=lambda x: x[1], reverse=True)
+            
+#             # Get top results above threshold
+#             relevant_pages = []
+#             for page_id, score in similarities[:self.top_k]:
+#                 if score >= self.similarity_threshold:
+#                     page_info = self.metadata[page_id].copy()
+#                     page_info['score'] = score
+#                     relevant_pages.append(page_info)
+            
+#             # Format content for model
+#             if relevant_pages:
+#                 context = "NDIS INFORMATION:\n\n"
+#                 for i, page in enumerate(relevant_pages):
+#                     context += f"{page['text']}\n\n"
+#                 return context
+#             else:
+#                 return ""
+#         except Exception as e:
+#             print(f"Error finding relevant content: {str(e)}")
+#             return ""
+
+#     def answer_question(self, query):
+#         """
+#         Answer a question about NDIS naturally using knowledge base and budget information.
+#         """
+#         try:
+#             # Save query in conversation history
+#             self.conversation_history.append({"role": "user", "content": query})
+            
+#             # Get relevant information
+#             relevant_content = self.find_relevant_content(query)
+            
+#             # Create prompt for model
+#             prompt = f"""
+#             You are a helpful, natural-sounding NDIS assistant. You answer questions about the National Disability Insurance Scheme in Australia in a friendly, conversational way.
+            
+#             Guidelines:
+#             - Sound natural and human-like in your responses
+#             - Be helpful, supportive and empathetic
+#             - Don't mention where your information comes from
+#             - Don't say "based on the information provided" or similar phrases
+#             - Don't format responses with numbering unless it's a step-by-step process
+#             - Ask follow-up questions when appropriate
+            
+#             USER QUESTION: {query}
+            
+#             {relevant_content}
+            
+#             BUDGET INFORMATION:
+#             {self.budget_info}
+            
+#             Please answer the question in a natural, helpful way. If the question relates to budget matters, use the budget information as appropriate without mentioning the source. If the information isn't available, provide general NDIS guidance or suggest contacting NDIS directly.
+#             """
+            
+#             # Generate response
+#             model = genai.GenerativeModel(model_name=self.generation_model)
+#             response = model.generate_content(prompt)
+#             self.conversation_history.append({"role": "assistant", "content": response.text})
+            
+#             return response.text
+#         except Exception as e:
+#             print(f"Error generating answer: {str(e)}")
+#             return "I'm sorry, I'm having trouble answering that right now. Could you try asking your question again, maybe in a different way?"
+
+# def main():
+#     EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_gemini.npz'
+#     USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
+#     API_KEY = 'Remove'  # Replace with your Gemini API key
+    
+#     chatbot = NDISAssistantBot(
+#         embeddings_path=EMBEDDINGS_PATH,
+#         api_key=API_KEY,
+#         budget_file_path=USER_BUDGET_INFORMATION
+#     )
+    
+#     print("NDIS Assistant")
+#     print("Hi there! I'm here to help with any NDIS questions you might have.")
+#     print("-" * 60)
+    
+#     while True:
+#         user_query = input("\nYou: ")
+#         if user_query.lower() in ['exit', 'quit', 'bye']:
+#             print("Thanks for chatting! Take care and have a great day.")
+#             break
+            
+#         answer = chatbot.answer_question(user_query)
+#         print(f"\nNDIS Assistant: {answer}")
+#         print("-" * 60)
+
+# if __name__ == "__main__":
+#     main()
+
+######################## Version 2 ##############################
+  
+# import numpy as np
+# import json
+# import os
+# import google.generativeai as genai
+# from scipy.spatial.distance import cosine
+
+# class NDISAssistantBot:
+#     def __init__(self, embeddings_path, api_key, budget_file_path, top_k=5, similarity_threshold=0.6):
+#         """
+#         Initialize the NDIS Assistant Bot with knowledge base and budget information.
+#         """
+#         # Load necessary data
+#         self.load_embeddings(embeddings_path)
+#         self.load_budget(budget_file_path)
+        
+#         # Configure API
+#         genai.configure(api_key=api_key)
+#         self.embedding_model = "models/embedding-001"
+#         self.generation_model = "models/gemini-2.0-flash"
+        
+#         # Search parameters
+#         self.top_k = top_k
+#         self.similarity_threshold = similarity_threshold
+#         self.conversation_history = []
+#         self.last_sources = []  # Store the sources used for the last response
+        
+#         print(f"NDIS Assistant initialized successfully")
+
+#     def load_embeddings(self, embeddings_path):
+#         """
+#         Load knowledge base embeddings and metadata.
+#         """
+#         try:
+#             data = np.load(embeddings_path, allow_pickle=True)
+#             self.page_ids = data['page_ids'].tolist()
+#             self.embeddings = data['embeddings']
+            
+#             # Handle metadata
+#             metadata_raw = data['metadata']
+#             if isinstance(metadata_raw, np.ndarray) and metadata_raw.size > 0:
+#                 metadata_str = metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0]
+#             else:
+#                 metadata_str = metadata_raw
+            
+#             self.metadata = json.loads(metadata_str)
+#             print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents")
+#         except Exception as e:
+#             print(f"Error loading knowledge base: {str(e)}")
+#             raise
+
+#     def load_budget(self, budget_file_path):
+#         """
+#         Load user's NDIS budget information.
+#         """
+#         try:
+#             if os.path.exists(budget_file_path):
+#                 with open(budget_file_path, 'r') as file:
+#                     self.budget_info = file.read()
+#                 print("Budget information loaded successfully")
+#             else:
+#                 self.budget_info = "No budget information available."
+#                 print(f"Warning: Budget file not found at {budget_file_path}")
+#         except Exception as e:
+#             print(f"Error loading budget: {str(e)}")
+#             self.budget_info = "Error loading budget information."
+
+#     def get_embedding(self, query):
+#         """
+#         Get embedding for text using Gemini API.
+#         """
+#         try:
+#             embedding_result = genai.embed_content(
+#                 model=self.embedding_model,
+#                 content=query,
+#                 task_type="retrieval_query",
+#             )
+#             return np.array(embedding_result["embedding"])
+#         except Exception as e:
+#             print(f"Error generating embedding: {str(e)}")
+#             raise
+
+#     def find_relevant_content(self, query):
+#         """
+#         Find relevant content from knowledge base for a query.
+#         Returns the relevant content and source information.
+#         """
+#         try:
+#             # Get query embedding
+#             query_embedding = self.get_embedding(query)
+            
+#             # Calculate similarities
+#             similarities = []
+#             for i, page_id in enumerate(self.page_ids):
+#                 similarity = 1 - cosine(query_embedding, self.embeddings[i])
+#                 similarities.append((page_id, similarity))
+            
+#             # Sort by similarity
+#             similarities.sort(key=lambda x: x[1], reverse=True)
+            
+#             # Get top results above threshold
+#             relevant_pages = []
+#             self.last_sources = []  # Reset sources for this query
+            
+#             for page_id, score in similarities[:self.top_k]:
+#                 if score >= self.similarity_threshold:
+#                     page_info = self.metadata[page_id].copy()
+#                     page_info['score'] = score
+#                     relevant_pages.append(page_info)
+                    
+#                     # Save source information using the correct keys from your metadata
+#                     source_info = {
+#                         'document': page_info.get('file_name', 'Unknown document'),
+#                         'page': page_info.get('page_number', 'Unknown page'),
+#                         'text': page_info.get('text', ''),
+#                         'score': round(score, 3)
+#                     }
+#                     self.last_sources.append(source_info)
+            
+#             # Format content for model
+#             if relevant_pages:
+#                 context = "NDIS INFORMATION:\n\n"
+#                 for i, page in enumerate(relevant_pages):
+#                     context += f"{page['text']}\n\n"
+#                 return context
+#             else:
+#                 return ""
+#         except Exception as e:
+#             print(f"Error finding relevant content: {str(e)}")
+#             self.last_sources = []
+#             return ""
+
+#     def answer_question(self, query):
+#         """
+#         Answer a question about NDIS naturally using knowledge base and budget information.
+#         Returns the answer text.
+#         """
+#         try:
+#             # Save query in conversation history
+#             self.conversation_history.append({"role": "user", "content": query})
+            
+#             # Get relevant information
+#             relevant_content = self.find_relevant_content(query)
+            
+#             # Create prompt for model
+#             prompt = f"""
+#             You are a helpful, natural-sounding NDIS assistant. You answer questions about the National Disability Insurance Scheme in Australia in a friendly, conversational way.
+            
+#             Guidelines:
+#             - Sound natural and human-like in your responses
+#             - Be helpful, supportive and empathetic
+#             - Don't mention where your information comes from
+#             - Don't say "based on the information provided" or similar phrases
+#             - Don't format responses with numbering unless it's a step-by-step process
+#             - Ask follow-up questions when appropriate
+            
+#             USER QUESTION: {query}
+            
+#             {relevant_content}
+            
+#             BUDGET INFORMATION:
+#             {self.budget_info}
+            
+#             Please answer the question in a natural, helpful way. If the question relates to budget matters, use the budget information as appropriate without mentioning the source. If the information isn't available, provide general NDIS guidance or suggest contacting NDIS directly.
+#             """
+            
+#             # Generate response
+#             model = genai.GenerativeModel(model_name=self.generation_model)
+#             response = model.generate_content(prompt)
+#             self.conversation_history.append({"role": "assistant", "content": response.text})
+            
+#             return response.text
+#         except Exception as e:
+#             print(f"Error generating answer: {str(e)}")
+#             return "I'm sorry, I'm having trouble answering that right now. Could you try asking your question again, maybe in a different way?"
+
+#     def print_sources(self):
+#         """
+#         Print the sources of information used for the last response.
+#         """
+#         if not self.last_sources:
+#             print("\nSource Information: No specific sources were used for this response.")
+#             return
+        
+#         print("\nSource Information:")
+#         print("-" * 60)
+#         for i, source in enumerate(self.last_sources, 1):
+#             print(f"Source {i}:")
+#             print(f"  Document: {source['document']}")
+#             print(f"  Page: {source['page']}")
+#             print(f"  Relevance Score: {source['score']}")
+#             print(f"  Context: {source['text'][:150]}...")  # Print first 150 chars of the text
+#             print("-" * 60)
+
+# def main():
+#     EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_gemini.npz'
+#     USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
+#     API_KEY = 'Remove'  # Replace with your Gemini API key
+    
+#     chatbot = NDISAssistantBot(
+#         embeddings_path=EMBEDDINGS_PATH,
+#         api_key=API_KEY,
+#         budget_file_path=USER_BUDGET_INFORMATION
+#     )
+    
+#     print("NDIS Assistant")
+#     print("Hi there! I'm here to help with any NDIS questions you might have.")
+#     print("-" * 60)
+    
+#     while True:
+#         user_query = input("\nYou: ")
+#         if user_query.lower() in ['exit', 'quit', 'bye']:
+#             print("Thanks for chatting! Take care and have a great day.")
+#             break
+            
+#         answer = chatbot.answer_question(user_query)
+#         print(f"\nNDIS Assistant: {answer}")
+        
+#         # Print source information separately
+#         chatbot.print_sources()
+        
+#         print("-" * 60)
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+######################### version 3 ##############################
 import numpy as np
 import json
 import os
 import google.generativeai as genai
 from scipy.spatial.distance import cosine
 
-class EnhancedKnowledgeBaseChatbot:
-    def __init__(self, embeddings_path, api_key, top_k=3):
-        """
-        Initialize the Enhanced Knowledge Base Chatbot with both general knowledge
-        and specialized knowledge base capabilities.
-        """
+class NDISAssistantBot:
+    def __init__(self, embeddings_path, api_key, budget_file_path, top_k=5, similarity_threshold=0.6)  :
+        """Initialize the NDIS Assistant Bot."""
         self.load_embeddings(embeddings_path)
+        self.load_budget(budget_file_path)
         genai.configure(api_key=api_key)
         self.embedding_model = "models/embedding-001"
-        self.generation_model = "models/gemini-2.0-flash"  # Using the more capable model
+        self.generation_model = "models/gemini-2.0-flash"
         self.top_k = top_k
+        self.similarity_threshold = similarity_threshold
         self.conversation_history = []
-        print(f"Enhanced Knowledge Base Chatbot initialized with {len(self.page_ids)} pages")
+        self.last_sources = []
+        print("NDIS Assistant initialized successfully")
 
     def load_embeddings(self, embeddings_path):
-        """
-        Load embeddings and metadata from npz file.
-        """
+        """Load knowledge base embeddings and metadata."""
         try:
             data = np.load(embeddings_path, allow_pickle=True)
             self.page_ids = data['page_ids'].tolist()
             self.embeddings = data['embeddings']
-            if self.embeddings.ndim != 2 or self.embeddings.shape[1] != 768:
-                raise ValueError(f"Embeddings must be 2D with 768 dimensions, got shape {self.embeddings.shape}")
-            
-            # Handle metadata loading
             metadata_raw = data['metadata']
-            if isinstance(metadata_raw, np.ndarray) and metadata_raw.size > 0:
-                metadata_str = metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0]
-            else:
-                metadata_str = metadata_raw
-            
-            if not isinstance(metadata_str, str):
-                raise ValueError(f"Metadata must be a string, got {type(metadata_str)}")
-            self.metadata = json.loads(metadata_str)
-            
-            print(f"Loaded {len(self.page_ids)} embeddings from {embeddings_path}, shape: {self.embeddings.shape}")
+            self.metadata = json.loads(metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0])
+            print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents")
         except Exception as e:
-            print(f"Error loading embeddings: {str(e)}")
+            print(f"Error loading knowledge base: {str(e)}")
             raise
 
-    def get_query_embedding(self, query):
-        """
-        Get embedding for a query using Gemini API.
-        """
+    def load_budget(self, budget_file_path):
+        """Load user's NDIS budget information."""
         try:
-            embedding_result = genai.embed_content(
+            if os.path.exists(budget_file_path):
+                with open(budget_file_path, 'r') as file:
+                    self.budget_info = file.read()
+                print("Budget information loaded successfully")
+            else:
+                self.budget_info = "No budget information available."
+                print(f"Warning: Budget file not found at {budget_file_path}")
+        except Exception as e:
+            print(f"Error loading budget: {str(e)}")
+            self.budget_info = "Error loading budget information."
+
+    def get_embedding(self, query):
+        """Get embedding for text using Gemini API."""
+        try:
+            result = genai.embed_content(
                 model=self.embedding_model,
                 content=query,
                 task_type="retrieval_query",
             )
-            embedding = np.array(embedding_result["embedding"])
-            if embedding.shape != (768,):
-                raise ValueError(f"Query embedding must be 768-dimensional, got {embedding.shape}")
-            return embedding
+            return np.array(result["embedding"])
         except Exception as e:
-            print(f"Error generating embedding for query: {str(e)}")
+            print(f"Error generating embedding: {str(e)}")
             raise
 
-    def get_most_relevant_pages(self, query_embedding):
-        """
-        Find the most relevant pages for a given query embedding.
-        """
-        similarities = []
-        for i, page_id in enumerate(self.page_ids):
-            similarity = 1 - cosine(query_embedding, self.embeddings[i])
-            similarities.append((page_id, similarity))
-        
-        similarities.sort(key=lambda x: x[1], reverse=True)
-        top_results = []
-        for page_id, score in similarities[:self.top_k]:
-            page_info = self.metadata[page_id].copy()
-            page_info['similarity_score'] = score
-            page_info['page_id'] = page_id
-            top_results.append(page_info)
-        return top_results
-
-    def format_sources_for_human(self, relevant_pages):
-        """
-        Format source information for display to the user.
-        """
-        sources = []
-        for i, page in enumerate(relevant_pages):
-            file_name = page['file_name']
-            page_num = page['page_number']
-            similarity = page['similarity_score'] * 100
-            text_excerpt = page['text'][:200] + "..." if len(page['text']) > 200 else page['text']
-            source = f"Source {i+1}: {file_name}, Page {page_num} (Relevance: {similarity:.1f}%)\nExcerpt: \"{text_excerpt}\""
-            sources.append(source)
-        return "\n".join(sources)
-    
-    def format_sources_for_model(self, relevant_pages):
-        """
-        Format source information for the model to use.
-        """
-        context = ""
-        for i, page in enumerate(relevant_pages):
-            context += f"Source {i+1}: {page['file_name']}, Page {page['page_number']}:\n{page['text']}\n\n"
-        return context
-
-    def is_ndis_related(self, query):
-        """
-        Determine if a query is related to NDIS or disability services.
-        """
-        ndis_keywords = [
-            "ndis", "national disability", "disability insurance", "disability service", 
-            "provider", "participant", "support", "plan", "funding", "registered provider"
-        ]
-        
-        query_lower = query.lower()
-        for keyword in ndis_keywords:
-            if keyword in query_lower:
-                return True
-        return False
-
-    def generate_answer(self, query, relevant_pages):
-        """
-        Generate a natural answer based on the query type.
-        """
-        # Check if the query is NDIS-related
-        is_ndis_query = self.is_ndis_related(query)
-        
-        # Update conversation history
-        self.conversation_history.append({"role": "user", "content": query})
-        
-        if is_ndis_query and relevant_pages and relevant_pages[0]['similarity_score'] > 0.6:
-            # For NDIS-related queries with relevant documents
-            context = self.format_sources_for_model(relevant_pages)
-            
-            prompt = f"""
-            You are a helpful assistant for the National Disability Insurance Scheme (NDIS).
-            
-            The user has asked: "{query}"
-            
-            Use the following information to provide a natural, conversational response:
-            
-            {context}
-            
-            Your response should:
-            1. Be conversational and friendly, as if you're having a natural conversation
-            2. Directly address the question in a helpful way
-            3. Include relevant information from the sources provided
-            4. Mention where information comes from (e.g., "According to [document name], page [page number]...")
-            5. Be accurate and provide complete information where available
-            6. If the information doesn't fully answer the question, acknowledge that and provide what is available
-            """
-            
-            sources_available = True
-        else:
-            # For general queries or when no relevant NDIS documents found
-            prompt = f"""
-            You are a helpful, knowledgeable assistant engaging in a natural conversation.
-            
-            The user has asked: "{query}"
-            
-            Please provide a natural, conversational response based on your general knowledge.
-            If this relates to NDIS (National Disability Insurance Scheme) but you don't have specific
-            information, mention that NDIS-specific details would require consulting official documentation.
-            """
-            
-            sources_available = False
-        
+    def find_relevant_content(self, query):
+        """Find relevant content from knowledge base."""
         try:
+            query_embedding = self.get_embedding(query)
+            similarities = [
+                (page_id, 1 - cosine(query_embedding, self.embeddings[i]))
+                for i, page_id in enumerate(self.page_ids)
+            ]
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            relevant_pages = []
+            self.last_sources = []
+            
+            for page_id, score in similarities[:self.top_k]:
+                if score >= self.similarity_threshold:
+                    page_info = self.metadata[page_id].copy()
+                    page_info['score'] = score
+                    relevant_pages.append(page_info)
+                    self.last_sources.append({
+                        'document': page_info.get('file_name', 'Unknown'),
+                        'page': page_info.get('page_number', 'Unknown'),
+                        'text': page_info.get('text', ''),
+                        'score': round(score, 3)
+                    })
+            
+            if relevant_pages:
+                context = "RELEVANT KNOWLEDGE BASE CONTEXT:\n"
+                for i, page in enumerate(relevant_pages):
+                    context += f"Chunk {i+1} (Score: {page['score']:.3f}):\n{page['text']}\n\n"
+                return context
+            return "No relevant context found."
+        except Exception as e:
+            print(f"Error finding content: {str(e)}")
+            self.last_sources = []
+            return "Error retrieving context."
+
+    def answer_question(self, query):
+        """Generate a concise, context-aware answer."""
+        try:
+            self.conversation_history.append({"role": "user", "content": query})
+            relevant_content = self.find_relevant_content(query)
+            
+            # Build conversation context
+            history_context = "CONVERSATION HISTORY:\n"
+            for entry in self.conversation_history[:-1]:  # Exclude current query
+                history_context += f"{entry['role'].capitalize()}: {entry['content']}\n"
+            
+            prompt = f"""
+            ### Role Summary
+            You are an AI chatbot designed to assist NDIS participants in Australia. Your primary function is to provide excellent, friendly, and efficient replies, listening attentively to understand user needs and offering helpful solutions or resource directions. If a question is unclear, ask clarifying questions. End responses positively.
+
+            ### Constraints
+            1. Never mention access to training data.
+            2. Stay focused on NDIS topics; politely redirect unrelated queries.
+            3. Rely on provided budget info, knowledge base, and general NDIS knowledge; if data is missing, use fallback or link to ndis.gov.au.
+            4. Do not answer non-NDIS-related questions or perform unrelated tasks.
+
+            ### Instructions
+            - Chat naturally, like a friendly back-and-forth conversation (e.g., Grok, GPT, Gemini).
+            - Provide precise, to-the-point answers; only give detailed explanations if explicitly needed.
+            - Use budget info from BUDGET INFORMATION only when directly relevant to the query—don’t mention it otherwise.
+            - Include URLs only if tied to source info from the knowledge base and explicitly available (e.g., ndis.gov.au links).
+            - Format responses cleanly with dot points or numbered steps where it fits naturally.
+            - Keep answers concise, accurate, and friendly, focusing on NDIS policies, funding, and plan management.
+            - Ask follow-up questions if needed to clarify user intent.
+            - If info is unavailable, provide brief NDIS guidance and a relevant link (e.g., ndis.gov.au/providers).
+            - For condition-specific queries, respond gently and accurately.
+
+            {history_context}
+
+            CURRENT QUESTION: {query}
+
+            {relevant_content}
+
+            BUDGET INFORMATION:
+            {self.budget_info}
+
+            Answer directly with practical, natural advice. Stay in character and keep it light where possible!
+            """
+            
             model = genai.GenerativeModel(model_name=self.generation_model)
             response = model.generate_content(prompt)
-            self.conversation_history.append({"role": "assistant", "content": response.text})
-            return response.text, sources_available
+            answer = response.text.strip()
+            self.conversation_history.append({"role": "assistant", "content": answer})
+            return answer
         except Exception as e:
             print(f"Error generating answer: {str(e)}")
-            error_msg = "I'm sorry, I encountered an error while generating a response. Could you please try asking again?"
-            self.conversation_history.append({"role": "assistant", "content": error_msg})
-            return error_msg, False
+            return "Sorry, I can’t quite get that—mind rephrasing it?"
 
-    def answer_query(self, query):
-        """
-        Process a user query and return a natural language answer with sources if relevant.
-        """
-        try:
-            query_embedding = self.get_query_embedding(query)
-            relevant_pages = self.get_most_relevant_pages(query_embedding)
-            
-            answer, sources_available = self.generate_answer(query, relevant_pages)
-            
-            if sources_available:
-                sources = self.format_sources_for_human(relevant_pages)
-                return {"answer": answer, "sources": sources, "has_sources": True}
-            else:
-                return {"answer": answer, "sources": None, "has_sources": False}
-        except Exception as e:
-            print(f"Error answering query: {str(e)}")
-            return {
-                "answer": "I'm sorry, I encountered a technical issue while processing your question. Could you please try again or rephrase your question?",
-                "sources": None,
-                "has_sources": False
-            }
+    def print_sources(self):
+        """Print sources used for the last response."""
+        if not self.last_sources:
+            print("\nSources: None used.")
+            return
+        print("\nSources:")
+        for i, source in enumerate(self.last_sources[:3], 1):
+            print(f"{i}. {source['document']} (Page {source['page']}) ")
 
 def main():
     EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_gemini.npz'
+    USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
     API_KEY = 'Remove'  # Replace with your Gemini API key
     
-    chatbot = EnhancedKnowledgeBaseChatbot(EMBEDDINGS_PATH, API_KEY)
+    chatbot = NDISAssistantBot(
+        embeddings_path=EMBEDDINGS_PATH,
+        api_key=API_KEY,
+        budget_file_path=USER_BUDGET_INFORMATION
+    )
     
-    print("Enhanced Knowledge Base Chatbot")
-    print("Ask me anything - for NDIS questions, I'll consult official documentation")
-    print("-" * 60)
+    print("NDIS Assistant: Hi! Ready to help with your NDIS queries.")
+    print("-" * 50)
     
     while True:
         user_query = input("\nYou: ")
         if user_query.lower() in ['exit', 'quit', 'bye']:
-            print("Goodbye! Have a great day!")
+            print("NDIS Assistant: Bye! Chat anytime you need.")
             break
             
-        result = chatbot.answer_query(user_query)
-        
-        print(f"\nAssistant: {result['answer']}")
-        
-        if result['has_sources']:
-            print("\n--- Sources Referenced ---")
-            print(result["sources"])
-        
-        print("-" * 60)
+        answer = chatbot.answer_question(user_query)
+        print(f"\nNDIS Assistant: {answer}")
+        chatbot.print_sources()  # Remove slicing as it's not implemented in the method
+        print("-" * 50)
 
 if __name__ == "__main__":
     main()
