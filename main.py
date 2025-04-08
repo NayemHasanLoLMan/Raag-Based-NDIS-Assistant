@@ -1,253 +1,1382 @@
 
-######################### Version Gemini ##############################
-import numpy as np
-import json
-import os
-import google.generativeai as genai
-from scipy.spatial.distance import cosine
+# ######################### Version Gemini ##############################
+# import numpy as np
+# import json
+# import os
+# import google.generativeai as genai
+# from scipy.spatial.distance import cosine
 
-class NDISAssistantBot:
-    def __init__(self, embeddings_path, api_key, budget_file_path, top_k=5, similarity_threshold=0.6)  :
-        """Initialize the NDIS Assistant Bot."""
-        self.load_embeddings(embeddings_path)
-        self.load_budget(budget_file_path)
-        genai.configure(api_key=api_key)
-        self.embedding_model = "models/embedding-001"
-        self.generation_model = "models/gemini-2.0-flash"
+# class NDISAssistantBot:
+#     def __init__(self, embeddings_path, api_key, budget_file_path, top_k=5, similarity_threshold=0.6)  :
+#         """Initialize the NDIS Assistant Bot."""
+#         self.load_embeddings(embeddings_path)
+#         self.load_budget(budget_file_path)
+#         genai.configure(api_key=api_key)
+#         self.embedding_model = "models/embedding-001"
+#         self.generation_model = "models/gemini-2.0-flash"
+#         self.top_k = top_k
+#         self.similarity_threshold = similarity_threshold
+#         self.conversation_history = []
+#         self.last_sources = []
+#         print("NDIS Assistant initialized successfully")
+
+#     def load_embeddings(self, embeddings_path):
+#         """Load knowledge base embeddings and metadata."""
+#         try:
+#             data = np.load(embeddings_path, allow_pickle=True)
+#             self.page_ids = data['page_ids'].tolist()
+#             self.embeddings = data['embeddings']
+#             metadata_raw = data['metadata']
+#             self.metadata = json.loads(metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0])
+#             print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents")
+#         except Exception as e:
+#             print(f"Error loading knowledge base: {str(e)}")
+#             raise
+
+#     def load_budget(self, budget_file_path):
+#         """Load user's NDIS budget information."""
+#         try:
+#             if os.path.exists(budget_file_path):
+#                 with open(budget_file_path, 'r') as file:
+#                     self.budget_info = file.read()
+#                 print("Budget information loaded successfully")
+#             else:
+#                 self.budget_info = "No budget information available."
+#                 print(f"Warning: Budget file not found at {budget_file_path}")
+#         except Exception as e:
+#             print(f"Error loading budget: {str(e)}")
+#             self.budget_info = "Error loading budget information."
+
+#     def get_embedding(self, query):
+#         """Get embedding for text using Gemini API."""
+#         try:
+#             result = genai.embed_content(
+#                 model=self.embedding_model,
+#                 content=query,
+#                 task_type="retrieval_query",
+#             )
+#             return np.array(result["embedding"])
+#         except Exception as e:
+#             print(f"Error generating embedding: {str(e)}")
+#             raise
+
+#     def find_relevant_content(self, query):
+#         """Find relevant content from knowledge base."""
+#         try:
+#             query_embedding = self.get_embedding(query)
+#             similarities = [
+#                 (page_id, 1 - cosine(query_embedding, self.embeddings[i]))
+#                 for i, page_id in enumerate(self.page_ids)
+#             ]
+#             similarities.sort(key=lambda x: x[1], reverse=True)
+            
+#             relevant_pages = []
+#             self.last_sources = []
+            
+#             for page_id, score in similarities[:self.top_k]:
+#                 if score >= self.similarity_threshold:
+#                     page_info = self.metadata[page_id].copy()
+#                     page_info['score'] = score
+#                     relevant_pages.append(page_info)
+#                     self.last_sources.append({
+#                         'document': page_info.get('file_name', 'Unknown'),
+#                         'page': page_info.get('page_number', 'Unknown'),
+#                         'text': page_info.get('text', ''),
+#                         'score': round(score, 3)
+#                     })
+            
+#             if relevant_pages:
+#                 context = "RELEVANT KNOWLEDGE BASE CONTEXT:\n"
+#                 for i, page in enumerate(relevant_pages):
+#                     context += f"Chunk {i+1} (Score: {page['score']:.3f}):\n{page['text']}\n\n"
+#                 return context
+#             return "No relevant context found."
+#         except Exception as e:
+#             print(f"Error finding content: {str(e)}")
+#             self.last_sources = []
+#             return "Error retrieving context."
+
+#     def answer_question(self, query):
+#         """Generate a concise, context-aware answer."""
+#         try:
+#             self.conversation_history.append({"role": "user", "content": query})
+#             relevant_content = self.find_relevant_content(query)
+
+#             # OPTIONAL: Limit to only top 2 most relevant chunks (helps reduce formal tone)
+#             relevant_lines = relevant_content.split("Chunk")
+#             if len(relevant_lines) > 4:
+#                 relevant_content = "Chunk".join(relevant_lines[:4])  # Includes header + 2 chunks
+
+#             # OPTIONAL: Flatten formatting to avoid triggering markdown-like lists
+#             relevant_content = relevant_content.replace("*", "-").replace("•", "-").replace("\n\n", "\n").strip()
+            
+#             # Build conversation context
+#             history_context = "CONVERSATION HISTORY:\n"
+#             for entry in self.conversation_history[:-1]:  # Exclude current query
+#                 history_context += f"{entry['role'].capitalize()}: {entry['content']}\n"
+            
+#             prompt = f"""
+#                 You are an AI chatbot designed to help users with inquiries, issues, and requests specifically related to the National Disability Insurance Scheme (NDIS) in Australia.
+
+#                 ### 🎯 Primary Function
+#                 Your role is to:
+#                 - ALWAYS attempt to answer questions using the provided knowledge base first
+#                 - Provide clear, helpful, and friendly responses at all times
+#                 - Listen attentively, understand the user's needs, and assist efficiently
+#                 - Stay focused on NDIS-related topics including eligibility, planning, supports, plan management, and appeals
+
+#                 If a user's question is unclear, ask polite follow-up questions to clarify. Always end your responses with a positive or encouraging note.
+
+#                 ---
+
+#                 ### 📚 Information Hierarchy
+#                 1. PRIMARY SOURCE: Knowledge Base Embeddings
+#                     - Always check and use information from the provided knowledge base first
+#                     - Reference the most relevant sections from the knowledge base
+#                     - Use the similarity scores to determine the most accurate information
+
+#                 2. SECONDARY SOURCE: User's Budget Information
+#                     - Reference budget details only when directly relevant
+#                     - Incorporate budget information naturally without explicitly mentioning it
+
+#                 3. FALLBACK SOURCES (only if knowledge base lacks information):
+#                     - NDIS official website and guidelines
+#                     - Other trusted sources listed below
+
+#                 ### 🛡️ Role Constraints
+#                 1. NO DATA DISCLOSURE
+#                  - Never mention access to training data or model capabilities
+#                  - Don't reference the knowledge base or embeddings directly
+
+#                 2. STAY IN CHARACTER
+#                  - Keep responses focused on NDIS topics
+#                  - Politely redirect off-topic questions
+
+#                 3. SOURCE PRIORITY
+#                  - Must attempt to answer from knowledge base first
+#                  - Only suggest external sources if knowledge base lacks information
+
+#                 ---
+
+#                 ### ✅ Style & Behavior Guidelines
+
+#                 - Be clear, concise, and accurate in all explanations.
+#                 - Use full sentences, warm tone, and natural conversation style.
+#                 - Use dot points or numbered lists when listing steps, options, or examples.
+#                 - Where possible, guide the user through steps to solve their problem.
+#                 - Respond gently and respectfully to sensitive health or disability topics.
+#                 - Recommend appropriate official resources when deeper legal or formal guidance is needed.
+
+#                 ---
+
+#                 ### 🌐 Fallback Sources (Use ONLY if knowledge base lacks information)
+
+#                 - **Hai Helper:** https://haihelper.com.au
+#                 - **NDIS Main Site:** https://www.ndis.gov.au
+#                 - **NDIS Guidelines:** https://ourguidelines.ndis.gov.au
+#                 - **Australian Legislation:** https://www.legislation.gov.au
+#                 - **Admin Review Tribunal (Appeals):** https://www.art.gov.au/applying-review/national-disability-insurance-scheme
+#                 - **eCase Search (Tribunal):** https://www.art.gov.au/help-and-resources/ecase-search
+#                 - **Published Tribunal Decisions:** https://www.art.gov.au/about-us/our-role/published-decisions
+
+#                 ---
+#                 ### 🧠 Response Structure
+#                 1. Direct answer from knowledge base
+#                 2. Supporting details or examples
+#                 3. Next steps or additional guidance
+#                 4. Positive closing note
+
+#                 When answering:
+#                 1. ALWAYS check knowledge base content first
+#                 2. Use similarity scores to identify most relevant information
+#                 3. Only reference external sources if necessary
+#                 4. Keep responses clear and actionable
+#             """
+
+#             # Construct messages for GPT with context
+#             # Construct messages for GPT with context
+#             messages = [
+#                 {"role": "system", "content": prompt.strip()},
+#                 {"role": "user", "content": f"""
+#                 KNOWLEDGE BASE CONTENT (Primary Source):
+#                 {relevant_content}
+
+#                 USER'S BUDGET INFORMATION (If Relevant):
+#                 {self.budget_info}
+
+#                 CONVERSATION HISTORY:
+#                 {history_context}
+
+#                 CURRENT QUESTION:
+#                 {query}
+
+#                 Instructions:
+#                 1. First, analyze the provided knowledge base content
+#                 2. Construct your response primarily using knowledge base information
+#                 3. Only reference external sources if the knowledge base lacks relevant information
+#                 4. Write a natural, expert-level response
+#                 5. Do not mention the knowledge base or data sources directly
+#                 """}
+#             ]
+
+
+            
+#             model = genai.GenerativeModel(model_name=self.generation_model)
+#             response = model.generate_content(
+#                 messages[0]['content'] + "\n\n" + messages[1]['content'],
+#                 generation_config=genai.types.GenerationConfig(
+#                     temperature=0.9,  # encourages more natural variation
+#                     top_p=1.0,
+#                     top_k=0,
+#                     candidate_count=1,
+#                     max_output_tokens=1024,
+#                     stop_sequences=None
+#                 )
+#             )
+#             answer = response.text.strip()
+#             self.conversation_history.append({"role": "assistant", "content": answer})
+#             return answer
+#         except Exception as e:
+#             print(f"Error generating answer: {str(e)}")
+#             return "Sorry, I can’t quite get that—mind rephrasing it?"
+
+#     def print_sources(self):
+#         """Print sources used for the last response."""
+#         if not self.last_sources:
+#             print("\nSources: None used.")
+#             return
+#         print("\nSources:")
+#         for i, source in enumerate(self.last_sources[:3], 1):
+#             print(f"{i}. {source['document']} (Page {source['page']}) ")
+
+# def main():
+#     EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_gemini.npz'
+#     USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
+#     API_KEY = 'Remove'  # Replace with your Gemini API key
+    
+#     chatbot = NDISAssistantBot(
+#         embeddings_path=EMBEDDINGS_PATH,
+#         api_key=API_KEY,
+#         budget_file_path=USER_BUDGET_INFORMATION
+#     )
+    
+#     print("NDIS Assistant: Hi! Ready to help with your NDIS queries.")
+#     print("-" * 50)
+    
+#     while True:
+#         user_query = input("\nYou: ")
+#         if user_query.lower() in ['/exit']:
+#             print("NDIS Assistant: Bye! Chat anytime you need.")
+#             break
+            
+#         answer = chatbot.answer_question(user_query)
+#         print(f"\nNDIS Assistant: {answer}")
+#         chatbot.print_sources()  # Remove slicing as it's not implemented in the method
+#         print("-" * 50)
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+
+
+#################################### OPENAI VERSION #########################################
+
+
+
+# import os
+# import json
+# import numpy as np
+# from scipy.spatial.distance import cosine
+# import openai
+# from typing import List, Dict, Tuple
+# from dotenv import load_dotenv
+
+# load_dotenv()  # Load API key from .env
+
+# class NDISAssistantBotOpenAI:
+#     def __init__(self, embeddings_path: str, budget_file_path: str, top_k=5, similarity_threshold=0.6):
+#         """Initialize the NDIS Assistant Bot using OpenAI."""
+#         self.embedding_model = "text-embedding-3-small"  # OpenAI embedding model
+#         self.chat_model = "gpt-4"  # Or "gpt-3.5-turbo"
+#         self.top_k = top_k
+#         self.similarity_threshold = similarity_threshold
+#         self.conversation_history = []
+#         self.last_sources = []
+
+#         self.load_embeddings(embeddings_path)
+#         self.load_budget(budget_file_path)
+
+#         openai.api_key = os.getenv("OPENAI_API_KEY")
+#         if not openai.api_key:
+#             raise EnvironmentError("Missing OPENAI_API_KEY environment variable.")
+
+#         print("NDIS Assistant (OpenAI) initialized successfully")
+
+#     def load_embeddings(self, embeddings_path: str):
+#         """Load pre-generated OpenAI embeddings."""
+#         try:
+#             data = np.load(embeddings_path, allow_pickle=True)
+#             self.page_ids = data['page_ids'].tolist()
+#             self.embeddings = data['embeddings']
+#             metadata_raw = data['metadata']
+#             self.metadata = json.loads(metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0])
+#             print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents.")
+#         except Exception as e:
+#             print(f"Error loading embeddings: {str(e)}")
+#             raise
+
+#     def load_budget(self, budget_file_path: str):
+#         """Load user’s NDIS budget information."""
+#         try:
+#             if os.path.exists(budget_file_path):
+#                 with open(budget_file_path, 'r') as file:
+#                     self.budget_info = file.read()
+#                 print("Budget information loaded successfully.")
+#             else:
+#                 self.budget_info = "No budget information available."
+#                 print(f"Warning: Budget file not found at {budget_file_path}")
+#         except Exception as e:
+#             print(f"Error loading budget: {str(e)}")
+#             self.budget_info = "Error loading budget information."
+
+#     def get_embedding(self, text: str) -> np.ndarray:
+#         """Generate embedding for query using OpenAI."""
+#         try:
+#             result = openai.Embedding.create(
+#                 model=self.embedding_model,
+#                 input=text
+#             )
+#             return np.array(result['data'][0]['embedding'])
+#         except Exception as e:
+#             print(f"Error generating embedding: {str(e)}")
+#             raise
+
+#     def find_relevant_content(self, query: str) -> str:
+#         """Find most relevant context chunks from the knowledge base."""
+#         try:
+#             query_embedding = self.get_embedding(query)
+#             similarities = [
+#                 (page_id, 1 - cosine(query_embedding, self.embeddings[i]))
+#                 for i, page_id in enumerate(self.page_ids)
+#             ]
+#             similarities.sort(key=lambda x: x[1], reverse=True)
+
+#             relevant_pages = []
+#             self.last_sources = []
+
+#             for page_id, score in similarities[:self.top_k]:
+#                 if score >= self.similarity_threshold:
+#                     page_info = self.metadata[page_id].copy()
+#                     page_info['score'] = score
+#                     relevant_pages.append(page_info)
+#                     self.last_sources.append({
+#                         'document': page_info.get('file_name', 'Unknown'),
+#                         'page': page_info.get('page_number', 'Unknown'),
+#                         'text': page_info.get('text', ''),
+#                         'score': round(score, 3)
+#                     })
+
+#             if relevant_pages:
+#                 context = "RELEVANT KNOWLEDGE BASE CONTEXT:\n"
+#                 for i, page in enumerate(relevant_pages):
+#                     context += f"Chunk {i + 1} (Score: {page['score']:.3f}):\n{page['text']}\n\n"
+#                 return context
+#             return "No relevant context found."
+#         except Exception as e:
+#             print(f"Error finding content: {str(e)}")
+#             return "Error retrieving context."
+
+#     def answer_question(self, query):
+#         """Generate a warm, context-aware answer using OpenAI GPT-4 Turbo."""
+#         try:
+#             self.conversation_history.append({"role": "user", "content": query})
+#             relevant_content = self.find_relevant_content(query)
+
+#             # OPTIONAL: Limit to top 2 chunks
+#             relevant_lines = relevant_content.split("Chunk")
+#             if len(relevant_lines) > 4:
+#                 relevant_content = "Chunk".join(relevant_lines[:4])
+
+#             history_context = ""
+#             for entry in self.conversation_history[:-1]:
+#                 history_context += f"{entry['role'].capitalize()}: {entry['content']}\n"
+
+#             # Build final prompt using system + user
+#             prompt = f"""
+#                 You are an AI chatbot designed to help users with inquiries, issues, and requests specifically related to the National Disability Insurance Scheme (NDIS) in Australia.
+
+#                 ### 🎯 Primary Function
+#                 Your role is to:
+#                 - ALWAYS attempt to answer questions using the provided knowledge base first
+#                 - Provide clear, helpful, and friendly responses at all times
+#                 - Listen attentively, understand the user's needs, and assist efficiently
+#                 - Stay focused on NDIS-related topics including eligibility, planning, supports, plan management, and appeals
+
+#                 If a user's question is unclear, ask polite follow-up questions to clarify. Always end your responses with a positive or encouraging note.
+
+#                 ---
+
+#                 ### 📚 Information Hierarchy
+#                 1. PRIMARY SOURCE: Knowledge Base Embeddings
+#                     - Always check and use information from the provided knowledge base first
+#                     - Reference the most relevant sections from the knowledge base
+#                     - Use the similarity scores to determine the most accurate information
+
+#                 2. SECONDARY SOURCE: User's Budget Information
+#                     - Reference budget details only when directly relevant
+#                     - Incorporate budget information naturally without explicitly mentioning it
+
+#                 3. FALLBACK SOURCES (only if knowledge base lacks information):
+#                     - NDIS official website and guidelines
+#                     - Other trusted sources listed below
+
+#                 ### 🛡️ Role Constraints
+#                 1. NO DATA DISCLOSURE
+#                  - Never mention access to training data or model capabilities
+#                  - Don't reference the knowledge base or embeddings directly
+
+#                 2. STAY IN CHARACTER
+#                  - Keep responses focused on NDIS topics
+#                  - Politely redirect off-topic questions
+
+#                 3. SOURCE PRIORITY
+#                  - Must attempt to answer from knowledge base first
+#                  - Only suggest external sources if knowledge base lacks information
+
+#                 ---
+
+#                 ### ✅ Style & Behavior Guidelines
+
+#                 - Be clear, concise, and accurate in all explanations.
+#                 - Use full sentences, warm tone, and natural conversation style.
+#                 - Use dot points or numbered lists when listing steps, options, or examples.
+#                 - Where possible, guide the user through steps to solve their problem.
+#                 - Respond gently and respectfully to sensitive health or disability topics.
+#                 - Recommend appropriate official resources when deeper legal or formal guidance is needed.
+
+#                 ---
+
+#                 ### 🌐 Fallback Sources (Use ONLY if knowledge base lacks information)
+
+#                 - **Hai Helper:** https://haihelper.com.au
+#                 - **NDIS Main Site:** https://www.ndis.gov.au
+#                 - **NDIS Guidelines:** https://ourguidelines.ndis.gov.au
+#                 - **Australian Legislation:** https://www.legislation.gov.au
+#                 - **Admin Review Tribunal (Appeals):** https://www.art.gov.au/applying-review/national-disability-insurance-scheme
+#                 - **eCase Search (Tribunal):** https://www.art.gov.au/help-and-resources/ecase-search
+#                 - **Published Tribunal Decisions:** https://www.art.gov.au/about-us/our-role/published-decisions
+
+#                 ---
+#                 ### 🧠 Response Structure
+#                 1. Direct answer from knowledge base
+#                 2. Supporting details or examples
+#                 3. Next steps or additional guidance
+#                 4. Positive closing note
+
+#                 When answering:
+#                 1. ALWAYS check knowledge base content first
+#                 2. Use similarity scores to identify most relevant information
+#                 3. Only reference external sources if necessary
+#                 4. Keep responses clear and actionable
+#             """
+
+#             # Construct messages for GPT with context
+#             # Construct messages for GPT with context
+#             messages = [
+#                 {"role": "system", "content": prompt.strip()},
+#                 {"role": "user", "content": f"""
+#                 KNOWLEDGE BASE CONTENT (Primary Source):
+#                 {relevant_content}
+
+#                 USER'S BUDGET INFORMATION (If Relevant):
+#                 {self.budget_info}
+
+#                 CONVERSATION HISTORY:
+#                 {history_context}
+
+#                 CURRENT QUESTION:
+#                 {query}
+
+#                 Instructions:
+#                 1. First, analyze the provided knowledge base content
+#                 2. Construct your response primarily using knowledge base information
+#                 3. Only reference external sources if the knowledge base lacks relevant information
+#                 4. Write a natural, expert-level response
+#                 5. Do not mention the knowledge base or data sources directly
+#                 """}
+#             ]
+
+#             # Call OpenAI Chat API (gpt-4-turbo or gpt-3.5-turbo)
+#             response = openai.ChatCompletion.create(
+#                 model="gpt-4",
+#                 messages=messages,
+#                 temperature=0.9,
+#                 max_tokens=1024,
+#                 top_p=1.0,
+#             )
+
+#             answer = response['choices'][0]['message']['content'].strip()
+#             self.conversation_history.append({"role": "assistant", "content": answer})
+#             return answer
+
+#         except Exception as e:
+#             print(f"Error generating answer: {str(e)}")
+#             return "Sorry, I ran into a hiccup. Mind rephrasing that?"
+
+#     def print_sources(self):
+#         """Display sources used in the last response."""
+#         if not self.last_sources:
+#             print("\nSources: None used.")
+#             return
+#         print("\nSources:")
+#         for i, source in enumerate(self.last_sources[:3], 1):
+#             print(f"{i}. {source['document']} (Page {source['page']}) — Score: {source['score']}")
+
+# def main():
+#     EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_openai.npz'
+#     USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
+
+#     chatbot = NDISAssistantBotOpenAI(
+#         embeddings_path=EMBEDDINGS_PATH,
+#         budget_file_path=USER_BUDGET_INFORMATION
+#     )
+
+#     print("NDIS Assistant (OpenAI): Hi! Ready to help with your NDIS queries.")
+#     print("-" * 50)
+
+#     while True:
+#         user_query = input("\nYou: ")
+#         if user_query.lower() in ['/exit']:
+#             print("NDIS Assistant: Bye! Chat anytime you need.")
+#             break
+
+#         answer = chatbot.answer_question(user_query)
+#         print(f"\nNDIS Assistant: {answer}")
+#         chatbot.print_sources()
+#         print("-" * 50)
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+################################################################################ V2 #################################################################################
+
+
+import os
+import json
+import numpy as np
+from scipy.spatial.distance import cosine
+import openai
+from typing import List, Dict, Tuple, Optional
+from dotenv import load_dotenv
+import time
+import logging
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("ndis_assistant.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("NDISAssistant")
+
+# Load environment variables
+load_dotenv()
+
+class NDISAssistantBotOpenAI:
+    def __init__(
+        self, 
+        embeddings_path: str, 
+        budget_file_path: str, 
+        top_k: int = 5,
+        similarity_threshold: float = 0.6,
+        embedding_model: str = "text-embedding-3-small",
+        chat_model: str = "gpt-4",
+        max_history: int = 10
+    ):
+        """
+        Initialize the NDIS Assistant Bot using OpenAI.
+        
+        Args:
+            embeddings_path: Path to pre-generated embeddings file
+            budget_file_path: Path to user's NDIS budget information
+            top_k: Number of most relevant documents to retrieve
+            similarity_threshold: Minimum similarity score to consider a document relevant
+            embedding_model: OpenAI embedding model to use
+            chat_model: OpenAI chat model to use
+            max_history: Maximum number of conversation turns to retain
+        """
+        self.embedding_model = embedding_model
+        self.chat_model = chat_model
         self.top_k = top_k
         self.similarity_threshold = similarity_threshold
         self.conversation_history = []
         self.last_sources = []
-        print("NDIS Assistant initialized successfully")
+        self.max_history = max_history
+        
+        # Statistics tracking
+        self.query_count = 0
+        self.start_time = datetime.now()
 
-    def load_embeddings(self, embeddings_path):
-        """Load knowledge base embeddings and metadata."""
+        # Load data
+        self._load_embeddings(embeddings_path)
+        self._load_budget(budget_file_path)
+        self._load_api_key()
+        
+        logger.info(f"NDIS Assistant Bot initialized with {len(self.page_ids)} documents")
+
+
+
+    def _load_embeddings(self, embeddings_path: str) -> None:
+        """Load pre-generated OpenAI embeddings with improved error handling."""
         try:
+            # Verify file exists
+            if not os.path.exists(embeddings_path):
+                raise FileNotFoundError(f"Embeddings file not found at: {embeddings_path}")
+                
+            logger.info(f"Attempting to load embeddings from: {embeddings_path}")
+            
+            # Load with diagnostic info
             data = np.load(embeddings_path, allow_pickle=True)
-            self.page_ids = data['page_ids'].tolist()
+            logger.info(f"NPZ file loaded with keys: {data.files}")
+            
+            # Verify expected keys exist
+            required_keys = ['page_ids', 'embeddings', 'metadata']
+            missing_keys = [key for key in required_keys if key not in data.files]
+            if missing_keys:
+                raise KeyError(f"Missing required keys in embeddings file: {missing_keys}")
+            
+            # Load page IDs with type checking
+            self.page_ids = data['page_ids']
+            if isinstance(self.page_ids, np.ndarray):
+                self.page_ids = self.page_ids.tolist()
+            logger.info(f"Loaded {len(self.page_ids)} page IDs")
+            
+            # Load embeddings with dimension validation
             self.embeddings = data['embeddings']
+            if len(self.embeddings.shape) != 2:
+                raise ValueError(f"Embeddings have unexpected shape: {self.embeddings.shape}, expected 2D array")
+            logger.info(f"Loaded embeddings with shape: {self.embeddings.shape}")
+            
+            # Load metadata with robust parsing
             metadata_raw = data['metadata']
-            self.metadata = json.loads(metadata_raw.item() if metadata_raw.size == 1 else metadata_raw[0])
-            print(f"Loaded NDIS knowledge base with {len(self.page_ids)} documents")
+            logger.info(f"Raw metadata type: {type(metadata_raw)}, size: {getattr(metadata_raw, 'size', 'N/A')}")
+            
+            # Handle different metadata formats
+            try:
+                if isinstance(metadata_raw, np.ndarray) and metadata_raw.size == 1:
+                    metadata_str = metadata_raw.item()
+                elif isinstance(metadata_raw, np.ndarray) and metadata_raw.size > 0:
+                    metadata_str = metadata_raw[0]
+                else:
+                    metadata_str = str(metadata_raw)
+                    
+                logger.info(f"Metadata string type: {type(metadata_str)}")
+                self.metadata = json.loads(metadata_str)
+                
+                # Verify metadata matches page IDs
+                if not all(page_id in self.metadata for page_id in self.page_ids):
+                    missing_ids = [pid for pid in self.page_ids if pid not in self.metadata]
+                    logger.warning(f"Some page IDs missing from metadata: {missing_ids[:5]}...")
+                    
+                logger.info(f"Successfully parsed metadata with {len(self.metadata)} entries")
+                
+            except json.JSONDecodeError as je:
+                logger.error(f"JSON decoding error: {str(je)}")
+                logger.error(f"First 100 chars of metadata string: {str(metadata_str)[:100]}...")
+                raise
+                
+            logger.info(f"Successfully loaded NDIS knowledge base with {len(self.page_ids)} documents")
+            
         except Exception as e:
-            print(f"Error loading knowledge base: {str(e)}")
+            logger.error(f"Error loading embeddings: {str(e)}")
             raise
 
-    def load_budget(self, budget_file_path):
+
+
+    def _load_budget(self, budget_file_path: str) -> None:
         """Load user's NDIS budget information."""
         try:
             if os.path.exists(budget_file_path):
-                with open(budget_file_path, 'r') as file:
+                with open(budget_file_path, 'r', encoding='utf-8') as file:
                     self.budget_info = file.read()
-                print("Budget information loaded successfully")
+                logger.info("Budget information loaded successfully")
             else:
                 self.budget_info = "No budget information available."
-                print(f"Warning: Budget file not found at {budget_file_path}")
+                logger.warning(f"Budget file not found at {budget_file_path}")
         except Exception as e:
-            print(f"Error loading budget: {str(e)}")
+            logger.error(f"Error loading budget: {str(e)}")
             self.budget_info = "Error loading budget information."
 
-    def get_embedding(self, query):
-        """Get embedding for text using Gemini API."""
-        try:
-            result = genai.embed_content(
-                model=self.embedding_model,
-                content=query,
-                task_type="retrieval_query",
-            )
-            return np.array(result["embedding"])
-        except Exception as e:
-            print(f"Error generating embedding: {str(e)}")
-            raise
+    def _load_api_key(self) -> None:
+        """Load OpenAI API key from environment variables."""
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            logger.error("Missing OPENAI_API_KEY environment variable")
+            raise EnvironmentError("Missing OPENAI_API_KEY environment variable")
+        
+        # Initialize OpenAI client
+        openai.api_key = self.api_key
 
-    def find_relevant_content(self, query):
-        """Find relevant content from knowledge base."""
+    def _get_embedding(self, text: str, retry_attempts: int = 3) -> Optional[np.ndarray]:
+        """
+        Generate embedding for query using OpenAI with retry logic.
+        
+        Args:
+            text: The text to generate an embedding for
+            retry_attempts: Number of retry attempts
+            
+        Returns:
+            Numpy array containing the embedding vector
+        """
+        for attempt in range(retry_attempts):
+            try:
+                result = openai.Embedding.create(
+                    model=self.embedding_model,
+                    input=text
+                )
+                return np.array(result['data'][0]['embedding'])
+            except Exception as e:
+                logger.warning(f"Embedding generation attempt {attempt+1} failed: {str(e)}")
+                if attempt < retry_attempts - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"Failed to generate embedding after {retry_attempts} attempts")
+                    raise
+    
+    def _truncate_history(self) -> None:
+        """Truncate conversation history to maximum length."""
+        if len(self.conversation_history) > self.max_history * 2:
+            # Keep the most recent conversation turns
+            self.conversation_history = self.conversation_history[-self.max_history * 2:]
+            logger.info(f"Truncated conversation history to {len(self.conversation_history)} messages")
+
+    def find_relevant_content(self, query: str) -> str:
+        """
+        Find most relevant context chunks from the knowledge base.
+        
+        Args:
+            query: User's question
+            
+        Returns:
+            String containing the most relevant content from the knowledge base
+        """
         try:
-            query_embedding = self.get_embedding(query)
+            # Generate embedding for the query
+            query_embedding = self._get_embedding(query)
+            
+            # Calculate similarity with all documents
             similarities = [
                 (page_id, 1 - cosine(query_embedding, self.embeddings[i]))
                 for i, page_id in enumerate(self.page_ids)
             ]
             similarities.sort(key=lambda x: x[1], reverse=True)
             
+            # Log the top similarity scores for debugging
+            top_scores = [score for _, score in similarities[:10]]
+            logger.info(f"Top 10 similarity scores: {[round(s, 3) for s in top_scores]}")
+            
+            # Lower the threshold if we're not finding matches
+            effective_threshold = self.similarity_threshold
+            if not any(score >= self.similarity_threshold for _, score in similarities[:self.top_k]):
+                # Adaptive threshold - use the highest score if it's above a minimum
+                min_acceptable = 0.3  # Absolute minimum threshold
+                if similarities and similarities[0][1] >= min_acceptable:
+                    effective_threshold = max(min_acceptable, similarities[0][1] * 0.9)
+                    logger.info(f"Adapting threshold from {self.similarity_threshold} to {effective_threshold}")
+                else:
+                    logger.warning(f"No good matches found. Best score: {similarities[0][1] if similarities else 'N/A'}")
+            
+            # Collect relevant documents
             relevant_pages = []
             self.last_sources = []
-            
+
             for page_id, score in similarities[:self.top_k]:
-                if score >= self.similarity_threshold:
-                    page_info = self.metadata[page_id].copy()
-                    page_info['score'] = score
-                    relevant_pages.append(page_info)
-                    self.last_sources.append({
-                        'document': page_info.get('file_name', 'Unknown'),
-                        'page': page_info.get('page_number', 'Unknown'),
-                        'text': page_info.get('text', ''),
-                        'score': round(score, 3)
-                    })
-            
+                if score >= effective_threshold:
+                    try:
+                        page_info = self.metadata[page_id].copy()
+                        page_info['score'] = score
+                        relevant_pages.append(page_info)
+                        self.last_sources.append({
+                            'document': page_info.get('file_name', 'Unknown'),
+                            'page': page_info.get('page_number', 'Unknown'),
+                            'text': page_info.get('text', '')[:500],  # Limit text preview for logging
+                            'score': round(score, 3)
+                        })
+                    except KeyError:
+                        logger.error(f"Key error for page_id {page_id} - not found in metadata")
+                    except Exception as e:
+                        logger.error(f"Error processing page {page_id}: {str(e)}")
+
+            # Format context for inclusion in prompt
             if relevant_pages:
                 context = "RELEVANT KNOWLEDGE BASE CONTEXT:\n"
                 for i, page in enumerate(relevant_pages):
-                    context += f"Chunk {i+1} (Score: {page['score']:.3f}):\n{page['text']}\n\n"
+                    context += f"Chunk {i + 1} (Score: {page['score']:.3f}):\n{page['text']}\n\n"
+                logger.info(f"Found {len(relevant_pages)} relevant pages for query")
                 return context
-            return "No relevant context found."
+            
+            logger.warning("No relevant context found in knowledge base")
+            return "No relevant context found in the knowledge base."
+                
         except Exception as e:
-            print(f"Error finding content: {str(e)}")
-            self.last_sources = []
-            return "Error retrieving context."
+            logger.error(f"Error finding relevant content: {str(e)}")
+            return "Error retrieving context from knowledge base."
+        
 
-    def answer_question(self, query):
-        """Generate a concise, context-aware answer."""
+
+    def debug_search(self, query: str) -> dict:
+        """
+        Debug function to test similarity searching without generating a response.
+        
+        Args:
+            query: Text to search for
+            
+        Returns:
+            Dictionary with debug information
+        """
         try:
-            self.conversation_history.append({"role": "user", "content": query})
-            relevant_content = self.find_relevant_content(query)
+            # Get embedding for query
+            start_time = time.time()
+            query_embedding = self._get_embedding(query)
+            embedding_time = time.time() - start_time
+            
+            # Calculate similarities
+            start_time = time.time()
+            similarities = [
+                (page_id, 1 - cosine(query_embedding, self.embeddings[i]))
+                for i, page_id in enumerate(self.page_ids)
+            ]
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            similarity_time = time.time() - start_time
+            
+            # Get top results for analysis
+            top_results = []
+            for page_id, score in similarities[:10]:
+                if page_id in self.metadata:
+                    result = {
+                        'page_id': page_id,
+                        'score': round(score, 4),
+                        'file': self.metadata[page_id].get('file_name', 'Unknown'),
+                        'page': self.metadata[page_id].get('page_number', 'Unknown'),
+                        'preview': self.metadata[page_id].get('text', '')[:100] + '...'
+                    }
+                    top_results.append(result)
+            
+            return {
+                'query': query,
+                'embedding_time_ms': round(embedding_time * 1000, 2),
+                'similarity_calc_time_ms': round(similarity_time * 1000, 2), 
+                'threshold': self.similarity_threshold,
+                'top_results': top_results,
+                'would_retrieve': any(result['score'] >= self.similarity_threshold for result in top_results)
+            }
+            
+        except Exception as e:
+            logger.error(f"Debug search error: {str(e)}")
+            return {'error': str(e)}
 
-            # OPTIONAL: Limit to only top 2 most relevant chunks (helps reduce formal tone)
+    # def answer_question(self, query: str, temperature: float = 0.7) -> str:
+    #     """
+    #     Generate a context-aware answer to the user's query.
+        
+    #     Args:
+    #         query: User's question
+    #         temperature: Temperature parameter for response generation (0.0-1.0)
+            
+    #     Returns:
+    #         Assistant's response to the query
+    #     """
+    #     try:
+    #         # Track query count
+    #         self.query_count += 1
+    #         logger.info(f"Processing query #{self.query_count}: {query[:50]}...")
+            
+    #         # Add user query to conversation history
+    #         self.conversation_history.append({"role": "user", "content": query})
+            
+    #         # Retrieve relevant content from knowledge base
+    #         start_time = time.time()
+    #         relevant_content = self.find_relevant_content(query)
+    #         retrieval_time = time.time() - start_time
+    #         logger.info(f"Content retrieval completed in {retrieval_time:.2f}s")
+            
+    #         # Limit to top chunks if needed (prevents context window issues)
+    #         relevant_lines = relevant_content.split("Chunk")
+    #         if len(relevant_lines) > 4:
+    #             relevant_content = "Chunk".join(relevant_lines[:4])
+    #             logger.info("Limited context to top 3 chunks due to length")
+
+    #         # Format conversation history for context
+    #         history_context = ""
+    #         for entry in self.conversation_history[:-1]:
+    #             history_context += f"{entry['role'].capitalize()}: {entry['content']}\n"
+
+    #         # Define system prompt
+    #         system_prompt = """
+    #             You are an AI chatbot designed to help users with inquiries, issues, and requests specifically related to the National Disability Insurance Scheme (NDIS) in Australia.
+
+    #             ### 🎯 Primary Function
+    #             Your role is to:
+    #             - ALWAYS attempt to answer questions using the provided knowledge base first
+    #             - Provide clear, helpful, and friendly responses at all times
+    #             - Listen attentively, understand the user's needs, and assist efficiently
+    #             - Stay focused on NDIS-related topics including eligibility, planning, supports, plan management, and appeals
+
+    #             If a user's question is unclear, ask polite follow-up questions to clarify. Always end your responses with a positive or encouraging note.
+
+    #             ---
+
+    #             ### 📚 Information Hierarchy
+    #             1. PRIMARY SOURCE: Knowledge Base Embeddings
+    #                 - Always check and use information from the provided knowledge base first
+    #                 - Reference the most relevant sections from the knowledge base
+    #                 - Use the similarity scores to determine the most accurate information
+
+    #             2. SECONDARY SOURCE: User's Budget Information
+    #                 - Reference budget details only when directly relevant
+    #                 - Incorporate budget information naturally without explicitly mentioning it
+
+    #             3. FALLBACK SOURCES (only if knowledge base lacks information):
+    #                 - NDIS official website and guidelines
+    #                 - Other trusted sources listed below
+
+    #             ### 🛡️ Role Constraints
+    #             1. NO DATA DISCLOSURE
+    #              - Never mention access to training data or model capabilities
+    #              - Don't reference the knowledge base or embeddings directly
+
+    #             2. STAY IN CHARACTER
+    #              - Keep responses focused on NDIS topics
+    #              - Politely redirect off-topic questions
+
+    #             3. SOURCE PRIORITY
+    #              - Must attempt to answer from knowledge base first
+    #              - Only suggest external sources if knowledge base lacks information
+
+    #             ---
+
+    #             ### ✅ Style & Behavior Guidelines
+
+    #             - Be clear, concise, and accurate in all explanations.
+    #             - Use full sentences, warm tone, and natural conversation style.
+    #             - Use dot points or numbered lists when listing steps, options, or examples.
+    #             - Where possible, guide the user through steps to solve their problem.
+    #             - Respond gently and respectfully to sensitive health or disability topics.
+    #             - Recommend appropriate official resources when deeper legal or formal guidance is needed.
+
+    #             ---
+
+    #             ### 🌐 Additional Information Sources
+    #                 When answering, if relevant and available, incorporate appropriate external references from the trusted NDIS-related sources below. Present the source naturally within your response, linking directly to the most relevant resource when helpful.
+
+    #             - **Hai Helper:** https://haihelper.com.au
+    #             - **NDIS Main Site:** https://www.ndis.gov.au
+    #             - **NDIS Guidelines:** https://ourguidelines.ndis.gov.au
+    #             - **Australian Legislation:** https://www.legislation.gov.au
+    #             - **Admin Review Tribunal (Appeals):** https://www.art.gov.au/applying-review/national-disability-insurance-scheme
+    #             - **eCase Search (Tribunal):** https://www.art.gov.au/help-and-resources/ecase-search
+    #             - **Published Tribunal Decisions:** https://www.art.gov.au/about-us/our-role/published-decisions
+
+    #             ---
+    #             ### 🧠 Response Structure
+    #             1. Direct answer from knowledge base
+    #             2. Supporting details or examples
+    #             3. Next steps or additional guidance
+    #             4. Positive closing note
+
+    #             When answering:
+    #             1. ALWAYS check knowledge base content first
+    #             2. Use similarity scores to identify most relevant information
+    #             3. Only reference external sources if necessary
+    #             4. Keep responses clear and actionable
+    #             5. Use proper markdown formatting for clarity
+    #         """
+
+    #         # Construct messages for GPT with context
+    #         # Construct messages for GPT with context
+    #         messages = [
+    #             {"role": "system", "content": system_prompt.strip()},
+    #             {"role": "user", "content": f"""
+    #             KNOWLEDGE BASE CONTENT (Primary Source):
+    #             {relevant_content}
+
+    #             USER'S BUDGET INFORMATION (If Relevant):
+    #             {self.budget_info}
+
+    #             CONVERSATION HISTORY:
+    #             {history_context}
+
+    #             CURRENT QUESTION:
+    #             {query}
+
+    #             Instructions:
+    #             1. First, analyze the provided knowledge base content
+    #             2. Construct your response primarily using knowledge base information
+    #             3. Only reference external sources if the knowledge base lacks relevant information
+    #             4. Write a natural, expert-level response
+    #             5. Do not mention the knowledge base or data sources directly
+    #             """}
+    #         ]
+
+    #         # Call OpenAI Chat API with retry logic
+    #         start_time = time.time()
+    #         max_retries = 3
+            
+    #         for attempt in range(max_retries):
+    #             try:
+    #                 response = openai.ChatCompletion.create(
+    #                     model=self.chat_model,
+    #                     messages=messages,
+    #                     temperature=temperature,
+    #                     max_tokens=1024,
+    #                     top_p=1.0
+    #                 )
+                    
+    #                 answer = response['choices'][0]['message']['content'].strip()
+    #                 generation_time = time.time() - start_time
+    #                 logger.info(f"Response generated in {generation_time:.2f}s after {attempt+1} attempts")
+                    
+    #                 # Add assistant response to conversation history
+    #                 self.conversation_history.append({"role": "assistant", "content": answer})
+                    
+    #                 # Truncate history if needed
+    #                 self._truncate_history()
+                    
+    #                 return answer
+                    
+    #             except Exception as e:
+    #                 logger.warning(f"Response generation attempt {attempt+1} failed: {str(e)}")
+    #                 if attempt < max_retries - 1:
+    #                     time.sleep(2 ** attempt)  # Exponential backoff
+    #                 else:
+    #                     logger.error(f"Failed to generate response after {max_retries} attempts")
+    #                     return "I apologize, but I'm having trouble connecting to my knowledge base right now. Could you please try again in a moment?"
+
+    #     except Exception as e:
+    #         logger.error(f"Error in answering question: {str(e)}")
+    #         return "I'm sorry, I encountered an error while processing your question. Please try asking again or rephrase your question."
+
+
+        # Modify the system prompt in the answer_question method to emphasize source citation and budget usage
+    def answer_question(self, query: str, temperature: float = 0.7) -> str:
+        """
+        Generate a context-aware answer to the user's query.
+        
+        Args:
+            query: User's question
+            temperature: Temperature parameter for response generation (0.0-1.0)
+            
+        Returns:
+            Assistant's response to the query
+        """
+        try:
+            # Track query count
+            self.query_count += 1
+            logger.info(f"Processing query #{self.query_count}: {query[:50]}...")
+            
+            # Add user query to conversation history
+            self.conversation_history.append({"role": "user", "content": query})
+            
+            # Retrieve relevant content from knowledge base
+            start_time = time.time()
+            relevant_content = self.find_relevant_content(query)
+            retrieval_time = time.time() - start_time
+            logger.info(f"Content retrieval completed in {retrieval_time:.2f}s")
+            
+            # Limit to top chunks if needed (prevents context window issues)
             relevant_lines = relevant_content.split("Chunk")
             if len(relevant_lines) > 4:
-                relevant_content = "Chunk".join(relevant_lines[:4])  # Includes header + 2 chunks
+                relevant_content = "Chunk".join(relevant_lines[:4])
+                logger.info("Limited context to top 3 chunks due to length")
 
-            # OPTIONAL: Flatten formatting to avoid triggering markdown-like lists
-            relevant_content = relevant_content.replace("*", "-").replace("•", "-").replace("\n\n", "\n").strip()
-            
-            # Build conversation context
-            history_context = "CONVERSATION HISTORY:\n"
-            for entry in self.conversation_history[:-1]:  # Exclude current query
+            # Format conversation history for context
+            history_context = ""
+            for entry in self.conversation_history[:-1]:
                 history_context += f"{entry['role'].capitalize()}: {entry['content']}\n"
-            
-            prompt = f"""
-            ### Conversational Style Guide
-            Respond like you're chatting with someone—not reading from a manual. Keep your answers warm, natural, and clear.
 
-            ❌ Avoid this unless it's really helpful:
-            - Listing everything in bullet points
-            - Speaking like a textbook or policy guide
+            # Define system prompt with enhanced source citation and budget usage instructions
+            system_prompt = """
+                You are an AI chatbot designed to help users with inquiries, issues, and requests specifically related to the National Disability Insurance Scheme (NDIS) in Australia.
+                NEVER mention that you are an AI model or that you have access to a knowledge base. Instead, Act as an support angent for NDIS, focus on providing accurate and helpful information based on the user's question and the context provided.
 
-            ✅ Do this:
-            - Use friendly, everyday language
-            - Speak in full sentences like you're having a conversation
-            - Use bullet points only when listing steps, examples, or multiple options the user asks for
+                ### 🎯 Primary Function
+                Your role is to:
+                - ALWAYS attempt to answer questions using the provided knowledge base first
+                - Provide clear, helpful, and friendly responses at all times
+                - Listen attentively, understand the user's needs, and assist efficiently
+                - Stay focused on NDIS-related topics including eligibility, planning, supports, plan management, and appeals
 
-            🧠 Examples:
+                If a user's question is unclear, ask polite follow-up questions to clarify. Always end your responses with a positive or encouraging note.
 
-            **Q: What is the NDIS?**
-            Great Response:
-            "The NDIS is Australia’s support system for people with disability. It helps you access funding for things like therapy, daily assistance, or assistive equipment. If you’d like, I can explain how to apply or explore what supports you're eligible for."
+                ---
 
-            **Q: What can I use my Health and Wellbeing budget for?**
-            Great Response:
-            "That funding can be used for things that improve your physical or mental health — like gym memberships, yoga, or even consultations with a dietitian. Want me to help you pick one based on your goals?"
+                ### 📚 Information Hierarchy
+                1. PRIMARY SOURCE: Knowledge Base Embeddings
+                    - Always check and use information from the provided knowledge base first
+                    - Reference the most relevant sections from the knowledge base
+                    - Use the similarity scores to determine the most accurate information
 
-            ---
+                2. SECONDARY SOURCE: User's Budget Information
+                    - ALWAYS incorporate the user's NDIS budget details when answering questions
+                    - Refer to specific budget items and amounts when discussing funding options
+                    - Personalize responses based on the budget information provided
+                    - Use phrases like "Based on your NDIS plan..." or "According to your current funding..."
 
-            ### Role Summary
-            You are an advanced AI assistant trained to support NDIS participants in Australia. You respond like a knowledgeable and compassionate human expert, capable of holding a natural, helpful, and informative conversation. Your job is to understand user questions, provide clear and practical NDIS-related guidance, and refer to trusted sources like the RAAG knowledge base and ndis.gov.au where helpful.
+                3. ADDITIONAL SOURCE (Give additional source link in the end for more information):
+                    - NDIS official website and guidelines
+                    - Other trusted sources listed below
 
-            Your responses should feel like speaking with an expert NDIS planner who listens carefully, explains clearly, and offers personal, actionable suggestions.
+                ### 🛡️ Role Constraints
+                1. NO DATA DISCLOSURE
+                - Never mention access to training data or model capabilities
+                - Don't reference the knowledge base or embeddings directly
 
-            ---
+                2. STAY IN CHARACTER
+                - Keep responses focused on NDIS topics
+                - Politely redirect off-topic questions
 
-            ### Core Instructions
-            - Keep responses natural, engaging, and helpful—like a conversation with a human expert or modern AI (e.g., GPT, Grok, Gemini).
-            - Rely on your NDIS domain knowledge, the RAAG knowledge base, and any provided budget info.
-            - Only use BUDGET INFORMATION when relevant to the query—don’t mention it if it’s not necessary.
-            - If the query is unclear, ask a polite follow-up question to better understand the user's needs.
-            - Always end responses positively and offer support or next steps where appropriate.
+                3. SOURCE CITATION REQUIREMENT
+                - ALWAYS cite your sources within the response
+                - For knowledge base sources, use "[Source: Document Name, Page X]" format
+                - For external sources, use natural citation like "According to the NDIS guidelines..."
+                - Place citations at the end of relevant statements, not just at the end of the response
 
-            ---
+                ---
 
-            ### Constraints
-            1. Do **not** mention access to training data or model capabilities.
-            2. Do **not** answer questions unrelated to NDIS. If asked, gently steer the user back to NDIS topics.
-            3. Use only available data or link to official sources (e.g., https://www.ndis.gov.au or RAAG references).
-            4. Do **not** perform unrelated tasks or answer on non-NDIS subjects.
-            5. If information is unavailable, provide general NDIS guidance and suggest visiting [ndis.gov.au](https://www.ndis.gov.au).
+                ### ✅ Style & Behavior Guidelines
 
-            ---
+                - Be clear, concise, and accurate in all explanations.
+                - Use full sentences, warm tone, and natural conversation style.
+                - Use dot points or numbered lists when listing steps, options, or examples.
+                - Where possible, guide the user through steps to solve their problem.
+                - Respond gently and respectfully to sensitive health or disability topics.
+                - Recommend appropriate official resources when deeper legal or formal guidance is needed.
 
-            ### Style & Formatting
-            - Speak in full sentences and paragraphs — like you're chatting with someone, not writing a report.
-            - Use dot points only when you're listing options, steps, or items clearly.
-            - Otherwise, keep it flowing and conversational.
-            - Avoid robotic tone or over-structured formatting.
+                ---
 
-            ---
+                ### 🌐 Additional Information Sources
 
-            ### Personalization Logic
-            - Use BUDGET INFORMATION only when needed to provide specific advice related to the user's plan.
-            - Use RAAG KNOWLEDGE BASE context to support clear, confident answers.
-            - Ensure every response is tailored — never static or copy-pasted.
+                - **Hai Helper:** https://haihelper.com.au
+                - **NDIS Main Site:** https://www.ndis.gov.au
+                - **NDIS Guidelines:** https://ourguidelines.ndis.gov.au
+                - **Australian Legislation:** https://www.legislation.gov.au
+                - **Admin Review Tribunal (Appeals):** https://www.art.gov.au/applying-review/national-disability-insurance-scheme
+                - **eCase Search (Tribunal):** https://www.art.gov.au/help-and-resources/ecase-search
+                - **Published Tribunal Decisions:** https://www.art.gov.au/about-us/our-role/published-decisions
 
-            ---
+                ---
+                ### 🧠 Response Structure
+                1. Direct answer from knowledge base with source citation
+                2. Supporting details with budget-relevant information
+                3. Next steps or additional guidance
+                4. keep professional tone 
+                5. give prosonalize response based on the user's information 
 
-            {history_context}
-
-            CURRENT QUESTION:
-            {query}
-
-            BUDGET INFORMATION:
-            {self.budget_info}
-
-            RAAG KNOWLEDGE BASE:
-            {relevant_content}
-
-            Answer like you're helping someone directly. Keep it light, personal, and genuinely supportive.
+                When answering:
+                1. ALWAYS check knowledge base content first
+                2. Use similarity scores to identify most relevant information
+                3. ALWAYS incorporate user's budget information when relevant
+                4. Cite sources throughout the response
+                5. Keep responses clear and actionable
+                6. Use proper markdown formatting for clarity
             """
 
+            # Extract source information for inclusion in the prompt
+            source_info = ""
+            for i, source in enumerate(self.last_sources, 1):
+                source_info += f"Source {i}: {source['document']} (Page {source['page']}), Score: {source['score']}\n"
+                source_info += f"Text preview: {source['text'][:100]}...\n\n"
 
+            # Construct messages for GPT with context and explicit source and budget instructions
+            messages = [
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": f"""
+                KNOWLEDGE BASE CONTENT (Primary Source):
+                {relevant_content}
+
+                USER'S BUDGET INFORMATION (ALWAYS USE THIS):
+                {self.budget_info}
+
+                SOURCE INFORMATION (CITE THESE):
+                {source_info}
+
+                CONVERSATION HISTORY:
+                {history_context}
+
+                CURRENT QUESTION:
+                {query}
+
+                Instructions:
+                1. First, analyze the provided knowledge base content
+                2. Construct your response primarily using knowledge base information
+                3. ALWAYS incorporate the user's budget information in your response
+                4. ALWAYS cite sources using [Source: Document Name, Page X] format
+                5. Write a natural, expert-level response
+                6. Do not mention the knowledge base or data sources directly, but DO cite them
+                7. Use proper markdown formatting for clarity
+                8. ALWAYS provide with some apropriate link form the ### 🌐 Additional Information Sources in the end of the response
+                """}
+            ]
+
+            # Call OpenAI Chat API with retry logic
+            start_time = time.time()
+            max_retries = 3
             
-            model = genai.GenerativeModel(model_name=self.generation_model)
-            response =  model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(
-                            temperature=0.9, # encourages more natural variation
-                            top_p=1.0,
-                            top_k=0,
-                            candidate_count=1,
-                            max_output_tokens=1024,
-                            stop_sequences=None
-                        )
+            for attempt in range(max_retries):
+                try:
+                    response = openai.ChatCompletion.create(
+                        model=self.chat_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=1024,
+                        top_p=1.0
                     )
-            answer = response.text.strip()
-            self.conversation_history.append({"role": "assistant", "content": answer})
-            return answer
-        except Exception as e:
-            print(f"Error generating answer: {str(e)}")
-            return "Sorry, I can’t quite get that—mind rephrasing it?"
+                    
+                    answer = response['choices'][0]['message']['content'].strip()
+                    generation_time = time.time() - start_time
+                    logger.info(f"Response generated in {generation_time:.2f}s after {attempt+1} attempts")
+                    
+                    # Add assistant response to conversation history
+                    self.conversation_history.append({"role": "assistant", "content": answer})
+                    
+                    # Truncate history if needed
+                    self._truncate_history()
+                    
+                    return answer
+                    
+                except Exception as e:
+                    logger.warning(f"Response generation attempt {attempt+1} failed: {str(e)}")
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                    else:
+                        logger.error(f"Failed to generate response after {max_retries} attempts")
+                        return "I apologize, but I'm having trouble connecting to my knowledge base right now. Could you please try again in a moment?"
 
-    def print_sources(self):
-        """Print sources used for the last response."""
+        except Exception as e:
+            logger.error(f"Error in answering question: {str(e)}")
+            return "I'm sorry, I encountered an error while processing your question. Please try asking again or rephrase your question."
+
+
+
+    def get_sources(self) -> List[Dict]:
+        """Return sources used in the last response."""
+        return self.last_sources
+
+    def print_sources(self) -> None:
+        """Display sources used in the last response."""
         if not self.last_sources:
             print("\nSources: None used.")
             return
+            
         print("\nSources:")
         for i, source in enumerate(self.last_sources[:3], 1):
-            print(f"{i}. {source['document']} (Page {source['page']}) ")
+            print(f"{i}. {source['document']} (Page {source['page']}) — Score: {source['score']}")
+
+    def clear_conversation(self) -> None:
+        """Clear the conversation history."""
+        self.conversation_history = []
+        logger.info("Conversation history cleared")
+        return "Conversation history has been cleared."
+        
+    def get_stats(self) -> Dict:
+        """Return statistics about the assistant's usage."""
+        return {
+            "queries_processed": self.query_count,
+            "session_start": self.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "session_duration": str(datetime.now() - self.start_time).split('.')[0],
+            "knowledge_base_size": len(self.page_ids)
+        }
+
+
 
 def main():
-    EMBEDDINGS_PATH = 'D:\\Sam_Project\\knowledge_base_embeddings_gemini.npz'
-    USER_BUDGET_INFORMATION = 'D:\\Sam_Project\\budget.txt'
-    API_KEY = 'Remove'  # Replace with your Gemini API key
+    """Main function to run the NDIS Assistant Bot."""
+    # Configuration paths
+    EMBEDDINGS_PATH = os.environ.get('EMBEDDINGS_PATH', 'knowledge_base_embeddings_openai.npz')
+    USER_BUDGET_INFORMATION = os.environ.get('BUDGET_PATH', 'budget.txt')
     
-    chatbot = NDISAssistantBot(
-        embeddings_path=EMBEDDINGS_PATH,
-        api_key=API_KEY,
-        budget_file_path=USER_BUDGET_INFORMATION
-    )
+    print("\n" + "="*50)
+    print("NDIS Assistant Bot (OpenAI)")
+    print("="*50)
     
-    print("NDIS Assistant: Hi! Ready to help with your NDIS queries.")
-    print("-" * 50)
-    
-    while True:
-        user_query = input("\nYou: ")
-        if user_query.lower() in ['/exit']:
-            print("NDIS Assistant: Bye! Chat anytime you need.")
-            break
-            
-        answer = chatbot.answer_question(user_query)
-        print(f"\nNDIS Assistant: {answer}")
-        chatbot.print_sources()  # Remove slicing as it's not implemented in the method
+    try:
+        # Initialize chatbot with a lower similarity threshold
+        chatbot = NDISAssistantBotOpenAI(
+            embeddings_path=EMBEDDINGS_PATH,
+            budget_file_path=USER_BUDGET_INFORMATION,
+            top_k=5,
+            similarity_threshold=0.4  # Lower this from 0.6 to 0.4
+        )
+        
+        print("\nNDIS Assistant: Hi! I'm ready to help with your NDIS queries.")
+        print("Type /exit to quit, /clear to clear conversation history, or /stats for usage statistics.")
+        print("Type /search [query] to debug search functionality.")
         print("-" * 50)
+
+        # Main interaction loop
+        while True:
+            user_query = input("\nYou: ").strip()
+            
+            # Handle special commands
+            if user_query.lower() == '/exit':
+                print("NDIS Assistant: Thank you for using the NDIS Assistant. Goodbye!")
+                break
+                
+            elif user_query.lower() == '/clear':
+                result = chatbot.clear_conversation()
+                print(f"\nNDIS Assistant: {result}")
+                
+            elif user_query.lower() == '/stats':
+                stats = chatbot.get_stats()
+                print("\nSession Statistics:")
+                for key, value in stats.items():
+                    print(f"- {key.replace('_', ' ').title()}: {value}")
+            
+            elif user_query.lower().startswith('/search '):
+                search_query = user_query[8:].strip()  # Remove "/search " prefix
+                if search_query:
+                    print(f"\nDebug searching for: '{search_query}'")
+                    results = chatbot.debug_search(search_query)
+                    
+                    print("\nSearch Results:")
+                    print(f"Query processing time: {results['embedding_time_ms']}ms (embedding) + {results['similarity_calc_time_ms']}ms (matching)")
+                    print(f"Similarity threshold: {results['threshold']}")
+                    print(f"Would retrieve content: {'Yes' if results.get('would_retrieve') else 'No'}")
+                    
+                    print("\nTop 10 matches:")
+                    for i, result in enumerate(results.get('top_results', []), 1):
+                        print(f"{i}. Score: {result['score']} - {result['file']} (Page {result['page']})")
+                        print(f"   Preview: {result['preview']}")
+                else:
+                    print("\nPlease provide a search query after /search")
+                
+            elif not user_query:
+                print("\nNDIS Assistant: Please type your question or type /exit to quit.")
+                
+            else:
+                # Process regular user query
+                print("\nProcessing your question...")
+                answer = chatbot.answer_question(user_query)
+                print(f"\nNDIS Assistant: {answer}")
+                chatbot.print_sources()
+                
+            print("-" * 50)
+            
+    except Exception as e:
+        logger.critical(f"Fatal error: {str(e)}")
+        print(f"\nError: {str(e)}")
+        print("Please check the configuration and try again.")
 
 if __name__ == "__main__":
     main()
