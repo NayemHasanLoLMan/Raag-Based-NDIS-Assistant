@@ -494,7 +494,7 @@ class NDISAssistantBotOpenAI:
                 5. Write a natural, expert-level response
                 6. Do not mention the knowledge base or data sources directly, but DO cite them
                 7. Use proper markdown formatting for clarity
-                8. ALWAYS provide with some apropriate link form the ### 🌐 Additional Information Sources in the end of the response
+                8. Provide with some apropriate link form the ### 🌐 Additional Information Sources in the end of the response (WHEN NEEDED)
                 """}
             ]
 
@@ -569,97 +569,14 @@ class NDISAssistantBotOpenAI:
 
 
 
-# def main():
-#     """Main function to run the NDIS Assistant Bot."""
-#     # Configuration paths
-#     EMBEDDINGS_PATH = os.environ.get('EMBEDDINGS_PATH', 'knowledge_base_embeddings_openai.npz')
-#     USER_BUDGET_INFORMATION = os.environ.get('BUDGET_PATH', 'budget.txt')
-    
-#     print("\n" + "="*50)
-#     print("NDIS Assistant Bot (OpenAI)")
-#     print("="*50)
-    
-#     try:
-#         # Initialize chatbot with a lower similarity threshold
-#         chatbot = NDISAssistantBotOpenAI(
-#             embeddings_path=EMBEDDINGS_PATH,
-#             budget_file_path=USER_BUDGET_INFORMATION,
-#             top_k=5,
-#             similarity_threshold=0.4  # Lower this from 0.6 to 0.4
-#         )
-        
-#         print("\nNDIS Assistant: Hi! I'm ready to help with your NDIS queries.")
-#         print("Type /exit to quit, /clear to clear conversation history, or /stats for usage statistics.")
-#         print("Type /search [query] to debug search functionality.")
-#         print("-" * 50)
-
-#         # Main interaction loop
-#         while True:
-#             user_query = input("\nYou: ").strip()
-            
-#             # Handle special commands
-#             if user_query.lower() == '/exit':
-#                 print("NDIS Assistant: Thank you for using the NDIS Assistant. Goodbye!")
-#                 break
-                
-#             elif user_query.lower() == '/clear':
-#                 result = chatbot.clear_conversation()
-#                 print(f"\nNDIS Assistant: {result}")
-                
-#             elif user_query.lower() == '/stats':
-#                 stats = chatbot.get_stats()
-#                 print("\nSession Statistics:")
-#                 for key, value in stats.items():
-#                     print(f"- {key.replace('_', ' ').title()}: {value}")
-            
-#             elif user_query.lower().startswith('/search '):
-#                 search_query = user_query[8:].strip()  # Remove "/search " prefix
-#                 if search_query:
-#                     print(f"\nDebug searching for: '{search_query}'")
-#                     results = chatbot.debug_search(search_query)
-                    
-#                     print("\nSearch Results:")
-#                     print(f"Query processing time: {results['embedding_time_ms']}ms (embedding) + {results['similarity_calc_time_ms']}ms (matching)")
-#                     print(f"Similarity threshold: {results['threshold']}")
-#                     print(f"Would retrieve content: {'Yes' if results.get('would_retrieve') else 'No'}")
-                    
-#                     print("\nTop 10 matches:")
-#                     for i, result in enumerate(results.get('top_results', []), 1):
-#                         print(f"{i}. Score: {result['score']} - {result['file']} (Page {result['page']})")
-#                         print(f"   Preview: {result['preview']}")
-#                 else:
-#                     print("\nPlease provide a search query after /search")
-                
-#             elif not user_query:
-#                 print("\nNDIS Assistant: Please type your question or type /exit to quit.")
-                
-#             else:
-#                 # Process regular user query
-#                 print("\nProcessing your question...")
-#                 answer = chatbot.answer_question(user_query)
-#                 print(f"\nNDIS Assistant: {answer}")
-#                 chatbot.print_sources()
-                
-#             print("-" * 50)
-            
-#     except Exception as e:
-#         logger.critical(f"Fatal error: {str(e)}")
-#         print(f"\nError: {str(e)}")
-#         print("Please check the configuration and try again.")
-
-# if __name__ == "__main__":
-#     main()
-
-
-
 def main(
     conversation_history: str = None,
     user_input: str = None,
     embeddings_path: str = None,
     budget_info: str = None
-) -> str:
+) -> dict:
     """
-    Process NDIS Assistant Bot queries and return a string response for backend use.
+    Process NDIS Assistant Bot queries and return a dictionary response for backend use.
 
     Args:
         conversation_history: Prior conversation as a string from the backend
@@ -668,67 +585,105 @@ def main(
         budget_info: User's budget information as a string from the backend
 
     Returns:
-        A string with the assistant's response and sources.
+        A dictionary with keys: 'NDIS Assistant', 'Sources', 'Header', 'Footer', 'Status', 'Extra'
     """
+    response_dict = {
+        "NDIS Assistant": "",
+        "Sources": [],
+        "Header": "\n" + "="*50 + "\nNDIS Assistant Bot (OpenAI)\n" + "="*50 + "\n",
+        "Footer": "\n" + "-"*50,
+        "Status": "success",
+        "Extra": ""
+    }
+
     if not user_input:
-        return "Please provide a question or command."
+        response_dict["NDIS Assistant"] = "Please provide a question or command."
+        return response_dict
 
     if not embeddings_path or not budget_info:
-        return "Error: Missing embeddings path or budget information."
+        response_dict["NDIS Assistant"] = "Error: Missing embeddings path or budget information."
+        response_dict["Status"] = "error"
+        return response_dict
 
     try:
         chatbot = NDISAssistantBotOpenAI(
             embeddings_path=embeddings_path,
             budget_info=budget_info,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            top_k=5,
+            similarity_threshold=0.4
         )
 
         user_query = user_input.strip()
-        response = ""
 
         if user_query.lower() == '/exit':
-            response = "Thank you for using the NDIS Assistant. Goodbye!"
+            response_dict["NDIS Assistant"] = "Thank you for using the NDIS Assistant. Goodbye!"
+            
         elif user_query.lower() == '/clear':
-            response = chatbot.clear_conversation()
+            response_dict["NDIS Assistant"] = chatbot.clear_conversation()
+            
         elif user_query.lower() == '/stats':
             stats = chatbot.get_stats()
-            response = "Session Statistics:\n"
+            stats_text = "Session Statistics:\n"
             for key, value in stats.items():
-                response += f"- {key.replace('_', ' ').title()}: {value}\n"
+                stats_text += f"- {key.replace('_', ' ').title()}: {value}\n"
+            response_dict["NDIS Assistant"] = stats_text.strip()
+            
         elif user_query.lower().startswith('/search '):
             search_query = user_query[8:].strip()
             if search_query:
                 results = chatbot.debug_search(search_query)
-                response = f"Debug Search Results for '{search_query}':\n"
-                response += f"Query processing time: {results['embedding_time_ms']}ms (embedding) + {results['similarity_calc_time_ms']}ms (matching)\n"
-                response += f"Similarity threshold: {results['threshold']}\n"
-                response += f"Would retrieve content: {'Yes' if results.get('would_retrieve') else 'No'}\n"
-                response += "\nTop 10 matches:\n"
+                extra_text = f"Debug searching for: '{search_query}'\n\n"
+                extra_text += "Search Results:\n"
+                extra_text += f"Query processing time: {results['embedding_time_ms']}ms (embedding) + {results['similarity_calc_time_ms']}ms (matching)\n"
+                extra_text += f"Similarity threshold: {results['threshold']}\n"
+                extra_text += f"Would retrieve content: {'Yes' if results.get('would_retrieve') else 'No'}\n"
+                extra_text += "\nTop 10 matches:\n"
                 for i, result in enumerate(results.get('top_results', []), 1):
-                    response += f"{i}. Score: {result['score']} - {result['file']} (Page {result['page']})\n"
-                    response += f"   Preview: {result['preview']}\n"
+                    extra_text += f"{i}. Score: {result['score']} - {result['file']} (Page {result['page']})\n"
+                    extra_text += f"   Preview: {result['preview']}\n"
+                response_dict["Extra"] = extra_text.strip()
             else:
-                response = "Please provide a search query after /search"
+                response_dict["NDIS Assistant"] = "Please provide a search query after /search"
+                
+        elif not user_query:
+            response_dict["NDIS Assistant"] = "Please type your question or type /exit to quit."
+            
         else:
-            answer = chatbot.answer_question(user_query)
-            response = answer
-            sources = chatbot.get_sources()
+            response_dict["NDIS Assistant"] = chatbot.answer_question(user_query)
+            sources = chatbot.get_sources()  # Assuming this returns a list of source dicts
             if sources:
-                response += "\n\n**Sources:**\n"
-                for i, source in enumerate(sources[:3], 1):
-                    response += f"{i}. {source['document']} (Page {source['page']}) — Score: {source['score']}\n"
+                response_dict["Sources"] = [
+                    f"{i}. {source['document']} (Page {source['page']}) — Score: {source['score']}"
+                    for i, source in enumerate(sources[:3], 1)
+                ]
 
-        return response
+        return response_dict
+
     except Exception as e:
         logger.critical(f"Error in main: {str(e)}")
-        return f"Error: {str(e)}\nPlease check the configuration and try again."
+        response_dict["NDIS Assistant"] = f"Error: {str(e)}\nPlease check the configuration and try again."
+        response_dict["Status"] = "error"
+        response_dict["Sources"] = []
+        response_dict["Extra"] = ""
+        return response_dict
 
 if __name__ == "__main__":
     # Example usage
     sample_history = "User: What’s my plan?\nAssistant: I need more details to assist!"
-    sample_input = "How do I use my funding?"
+    sample_input = "do you know my name?"
     sample_embeddings = "D:\\Sam_Project\\knowledge_base_embeddings_openai.npz"
     sample_budget = "Your NDIS plan includes $5000 for therapy and $2000 for equipment."
     
     response = main(sample_history, sample_input, sample_embeddings, sample_budget)
-    print(response)
+    # Print response in a formatted way for demonstration
+    print(response["Header"])
+    if response["NDIS Assistant"]:
+        print(f"\nNDIS Assistant: {response['NDIS Assistant']}")
+    if response["Sources"]:
+        print("\nSources:")
+        for source in response["Sources"]:
+            print(source)
+    if response["Extra"]:
+        print(f"\n{response['Extra']}")
+    print(response["Footer"])

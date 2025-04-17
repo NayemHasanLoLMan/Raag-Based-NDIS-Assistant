@@ -1,7 +1,13 @@
 import openai
+import os 
+
+
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # Replace with your actual API key
-openai.api_key = "Remove"
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 response = openai.ChatCompletion.create(
     model="gpt-3.5-turbo",  # or "gpt-4" if you have access
