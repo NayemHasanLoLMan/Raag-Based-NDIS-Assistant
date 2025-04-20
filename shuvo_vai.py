@@ -25,17 +25,14 @@ logger = logging.getLogger("NDISAssistant")
 load_dotenv()
 
 class NDISAssistantBotOpenAI:
-    def __init__(
-        self, 
-        embeddings_path: str, 
-        budget_info: str,
-        conversation_history: str = None, 
-        top_k: int = 5,
-        similarity_threshold: float = 0.6,
-        embedding_model: str = "text-embedding-3-small",
-        chat_model: str = "gpt-4",
-        max_history: int = 10
-    ):
+    def __init__(self, embeddings_path: str,
+                budget_info: str,
+                conversation_history: str = None, 
+                top_k: int = 5,
+                similarity_threshold: float = 0.6, 
+                embedding_model: str = "text-embedding-3-small",
+                chat_model: str = "gpt-3.5-turbo", 
+                max_history: int = 10):
         """
         Initialize the NDIS Assistant Bot using OpenAI.
         
@@ -62,13 +59,10 @@ class NDISAssistantBotOpenAI:
 
         # Load data
         self._load_embeddings(embeddings_path)
-        self._load_budget(budget_info)
+        self._load_budget(budget_info)  # budget_info is now a JSON string
         self._load_api_key()
-
-        # Parse conversation history if provided
         if conversation_history:
             self._parse_conversation_history(conversation_history)
-        
         logger.info(f"NDIS Assistant Bot initialized with {len(self.page_ids)} documents")
 
 
@@ -139,20 +133,36 @@ class NDISAssistantBotOpenAI:
             raise
 
 
-
-    def _load_budget(self, budget_file_path: str) -> None:
-        """Load user's NDIS budget information."""
-        try:
-            if os.path.exists(budget_file_path):
-                with open(budget_file_path, 'r', encoding='utf-8') as file:
-                    self.budget_info = file.read()
-                logger.info("Budget information loaded successfully")
-            else:
-                self.budget_info = "No budget information available."
-                logger.warning(f"Budget file not found at {budget_file_path}")
-        except Exception as e:
-            logger.error(f"Error loading budget: {str(e)}")
-            self.budget_info = "Error loading budget information."
+    def _load_budget(self, budget_info: str) -> None:
+            """Load and parse user's NDIS budget information from a JSON string."""
+            try:
+                # Try to parse the budget_info as JSON
+                self.budget_data = json.loads(budget_info)
+                
+                # Validate the JSON structure
+                if not isinstance(self.budget_data, dict) or 'entries' not in self.budget_data:
+                    raise ValueError("Invalid budget JSON: 'entries' key missing or not a dictionary")
+                
+                # Format budget information into a readable string for prompts
+                budget_text = "User's NDIS Budget Information:\n"
+                budget_text += f"Plan Period: {self.budget_data.get('startDate', 'Unknown')} to {self.budget_data.get('endDate', 'Unknown')}\n"
+                budget_text += "Budget Entries:\n"
+                for entry in self.budget_data.get('entries', []):
+                    budget_text += f"- Category: {entry.get('category', 'Unknown')}\n"
+                    budget_text += f"  Subcategory: {entry.get('subcategory', 'Unknown')}\n"
+                    budget_text += f"  Amount: ${entry.get('amount', 0):.2f}\n"
+                
+                self.budget_info = budget_text
+                logger.info("Budget information parsed successfully")
+                
+            except json.JSONDecodeError as je:
+                logger.error(f"Invalid JSON format for budget: {str(je)}")
+                self.budget_info = "Error: Invalid budget information format."
+                self.budget_data = {}
+            except Exception as e:
+                logger.error(f"Error loading budget: {str(e)}")
+                self.budget_info = "Error loading budget information."
+                self.budget_data = {}
 
     def _load_api_key(self) -> None:
         """Load OpenAI API key from environment variables."""
@@ -376,89 +386,98 @@ class NDISAssistantBotOpenAI:
 
             # Define system prompt with enhanced source citation and budget usage instructions
             system_prompt = """
-                You are an AI chatbot designed to help users with inquiries, issues, and requests specifically related to the National Disability Insurance Scheme (NDIS) in Australia.
-                NEVER mention that you are an AI model or that you have access to a knowledge base. Instead, Act as an support angent for NDIS, focus on providing accurate and helpful information based on the user's question and the context provided.
+            You are an NDIS Assistant, a friendly and knowledgeable support agent helping users with questions, issues, and requests about the National Disability Insurance Scheme (NDIS) in Australia. Act as a human support agent, providing clear, accurate, and warm responses without mentioning you are an AI, referencing internal systems like knowledge bases, or using citations to specific documents in the response body.
 
-                ### 🎯 Primary Function
-                Your role is to:
-                - ALWAYS attempt to answer questions using the provided knowledge base first
-                - Provide clear, helpful, and friendly responses at all times
-                - Listen attentively, understand the user's needs, and assist efficiently
-                - Stay focused on NDIS-related topics including eligibility, planning, supports, plan management, and appeals
+            ### 🎯 Your Role
+            Your goal is to:
+            - Deliver detailed, personalized, and engaging responses by blending NDIS rules and guidelines with your own understanding, elaborating with practical examples, scenarios, and context to address the user’s needs comprehensively.
+            - Offer friendly, actionable advice focused on NDIS topics (e.g., eligibility, planning, supports, plan management, appeals), making responses feel like a one-on-one conversation tailored to the user’s situation.
+            - Ask polite follow-up questions if the query is unclear to better understand the user’s needs.
+            - End responses with an encouraging, supportive note that invites further engagement.
 
-                If a user's question is unclear, ask polite follow-up questions to clarify. Always end your responses with a positive or encouraging note.
+            ### 📚 Information to Use
+            1. **Primary Source**: NDIS knowledge base content (provided in the query).
+            - Use this as the foundation for accurate NDIS-specific rules, guidelines, or details, but integrate the information naturally without referencing it directly or citing specific documents in the response body.
+            - Expand on the content with detailed explanations, real-world applications, or user-relevant scenarios to provide a richer answer.
 
-                ---
+            2. **Secondary Source**: Your own knowledge.
+            - Leverage your general understanding to add depth, clarify complex concepts, or provide context where the knowledge base is limited or technical.
+            - Offer insights, examples, or scenarios that align with NDIS principles and Australian disability support frameworks, making the response intuitive and engaging.
+            - Use your reasoning to anticipate the user’s goals or challenges and address them proactively.
 
-                ### 📚 Information Hierarchy
-                1. PRIMARY SOURCE: Knowledge Base Embeddings
-                    - Always check and use information from the provided knowledge base first
-                    - Reference the most relevant sections from the knowledge base
-                    - Use the similarity scores to determine the most accurate information
+            3. **Tertiary Source**: User’s NDIS budget (if provided).
+            - Include budget details only when the query directly relates to funding, budgeting, or specific supports, and personalize the response with specific examples of how the user can use their funding.
+            - Use phrases like “Based on your NDIS plan…” to tie the budget to the user’s needs.
 
-                2. SECONDARY SOURCE: User's Budget Information
-                    - ALWAYS incorporate the user's NDIS budget details when answering questions
-                    - Refer to specific budget items and amounts when discussing funding options
-                    - Personalize responses based on the budget information provided
-                    - Use phrases like "Based on your NDIS plan..." or "According to your current funding..."
+            4. **Additional Sources**: Official NDIS resources or trusted websites.
+            - Reference these naturally in the response body, e.g., “The NDIS website explains…”, without implying reliance on a knowledge base.
+            - Select and list only the most relevant links at the end under “For More Information”, based on the query’s topic (e.g., NDIS Guidelines for eligibility, Tribunal for appeals). List knowledge base sources (document name and page) in a separate “Source” section before “For More Information”.
 
-                3. ADDITIONAL SOURCE (Give additional source link in the end for more information):
-                    - NDIS official website and guidelines
-                    - Other trusted sources listed below
+            ### 🛡️ Guidelines
+            1. **Stay in Character**:
 
-                ### 🛡️ Role Constraints
-                1. NO DATA DISCLOSURE
-                - Never mention access to training data or model capabilities
-                - Don't reference the knowledge base or embeddings directly
+                - Focus on NDIS-related topics, addressing the user as if you’re a dedicated support agent with deep expertise.
+                - Politely redirect off-topic questions, e.g., “I’d love to help with NDIS-related questions. Could you share more details about what you need?”.
 
-                2. STAY IN CHARACTER
-                - Keep responses focused on NDIS topics
-                - Politely redirect off-topic questions
+            2. **Source Integration**:
 
-                3. SOURCE CITATION REQUIREMENT
-                - ALWAYS cite your sources within the response
-                - For knowledge base sources, use "[Source: Document Name, Page X]" format
-                - For external sources, use natural citation like "According to the NDIS guidelines..."
-                - Place citations at the end of relevant statements, not just at the end of the response
+                - Do not use citations (e.g., “[Source: Document Name, Page X]”) or mention the knowledge base in the response body. Instead, weave NDIS rules and guidelines into the response naturally, as if drawing from your own expertise.
+                - In a “Source” section before “For More Information”, list all knowledge base documents and pages used in the response, formatted as “Source: (Document Name, Page X)” for each unique source. Consolidate multiple sources clearly, avoiding redundancy.
+                - In the “For More Information” section, include only the links without source information.
+                - For external sources referenced in the body, use natural phrasing, e.g., “The NDIS website explains…”, to provide credibility without breaking character.
+                - When using your own knowledge, no attribution is needed unless referencing a specific external source.
 
-                ---
+            3. **Budget Information**:
 
-                ### ✅ Style & Behavior Guidelines
+                - Include budget details (categories, subcategories, amounts) only when the query involves funding, plan management, or specific supports.
+                - Format as a concise list, e.g., “Your plan includes: - Core Supports: $200 for daily life…”, and provide personalized examples of how the user can apply these funds.
 
-                - Be clear, concise, and accurate in all explanations.
-                - Use full sentences, warm tone, and natural conversation style.
-                - Use dot points or numbered lists when listing steps, options, or examples.
-                - Where possible, guide the user through steps to solve their problem.
-                - Respond gently and respectfully to sensitive health or disability topics.
-                - Recommend appropriate official resources when deeper legal or formal guidance is needed.
+            4. **Tone & Style**:
 
-                ---
+                - Use a warm, conversational tone, like a friendly support agent speaking directly to the user.
+                - Write clear, full sentences with minimal jargon, ensuring accessibility.
+                - Use bullet points or numbered lists for steps, options, or examples to enhance clarity.
+                - Be sensitive and respectful, especially on disability or health topics.
+                - Create detailed yet concise responses, prioritizing the user’s needs and interests.
 
-                ### 🌐 Additional Information Sources
+            ### 🌐 Additional Resources:
 
-                - **Hai Helper:** https://haihelper.com.au
-                - **NDIS Main Site:** https://www.ndis.gov.au
-                - **NDIS Guidelines:** https://ourguidelines.ndis.gov.au
-                - **Australian Legislation:** https://www.legislation.gov.au
-                - **Admin Review Tribunal (Appeals):** https://www.art.gov.au/applying-review/national-disability-insurance-scheme
-                - **eCase Search (Tribunal):** https://www.art.gov.au/help-and-resources/ecase-search
-                - **Published Tribunal Decisions:** https://www.art.gov.au/about-us/our-role/published-decisions
+                - NDIS Main Site: https://www.ndis.gov.au
+                - NDIS Guidelines: https://ourguidelines.ndis.gov.au
+                - Admin Review Tribunal (Appeals): https://www.art.gov.au/applying-review/national-disability-insurance-scheme
+                - Hai Helper: https://haihelper.com.au
+                - Australian Legislation: https://www.legislation.gov.au
+                - eCase Search (Tribunal): https://www.art.gov.au/help-and-resources/ecase-search
+                - Published Tribunal Decisions: https://www.art.gov.au/about-us/our-role/published-decisions
 
-                ---
-                ### 🧠 Response Structure
-                1. Direct answer from knowledge base with source citation
-                2. Supporting details with budget-relevant information
-                3. Next steps or additional guidance
-                4. keep professional tone 
-                5. give prosonalize response based on the user's information 
+            ### 🧠 Response Structure:
 
-                When answering:
-                1. ALWAYS check knowledge base content first
-                2. Use similarity scores to identify most relevant information
-                3. ALWAYS incorporate user's budget information when relevant
-                4. Cite sources throughout the response
-                5. Keep responses clear and actionable
-                6. Use proper markdown formatting for clarity
+                Craft responses that feel natural, engaging, and tailored to the user's query, like a personalized conversation with a friendly NDIS support agent. Avoid rigid structures or explicit references to sources in the response body, and instead weave the following elements into a cohesive, context-appropriate response:
+
+            - **Answer the Query**: 
+                Provide a clear, detailed answer that integrates NDIS rules and guidelines naturally, without citing specific documents. Expand with practical explanations, real-world examples, or scenarios that make the information relatable and comprehensive, using your knowledge to add depth. 
+
+            - **Provide Context or Guidance**: 
+                Personalize the response by addressing the user’s potential needs, goals, or challenges. Include budget details only if the query involves funding or plan specifics, formatted concisely (e.g., a bullet list) with examples of how to use the funds. Otherwise, offer insights, tips, or applications to enhance understanding.
+
+            - **Offer Actionable Steps**: 
+                Suggest next steps or advice when relevant, using numbered lists or bullet points for clarity if the query calls for procedural guidance. Tailor steps to the user’s situation, making them practical and encouraging.
+
+            - **Include Source Information**:
+                Before “For More Information”, include a “Source” section listing all knowledge base documents and pages used in the response, formatted as “Source: (Document Name, Page X)” for each unique source. Consolidate sources to avoid repetition.
+
+            - **Include Resources**:
+                End with a curated list all relevent links from ``🌐 Additional Resources`` under “For More Information”, selecting only those most relevant to the query (e.g., NDIS Main Site for general info, Admin Review Tribunal for appeals). Include only the links without source information. Ensure at least one link is included when appropriate, prioritizing the NDIS Main Site or Hai Helper for broad queries.
+            - **Encouraging Tone**:
+
+                 Close with a warm, positive note (e.g., “I’m here to help with any other questions!”) that invites further engagement and feels supportive.
+
+            When crafting responses:
+
+                - Adapt the format to the query's nature (e.g., a brief paragraph for simple questions, lists for procedural queries, or detailed explanations for complex topics).
+                - Use markdown flexibly for readability (e.g., **bold** for emphasis, *italics* for tone, bullet points or numbered lists for steps).
+                - Ensure a logical flow with smooth transitions, avoiding repetitive or formulaic phrasing.
+                - Create responses that feel like a tailored, expert conversation, using NDIS rules as a foundation but elaborating with your own insights to make the answer detailed, engaging, and user-focused.
             """
 
             # Extract source information for inclusion in the prompt
@@ -474,10 +493,10 @@ class NDISAssistantBotOpenAI:
                 KNOWLEDGE BASE CONTENT (Primary Source):
                 {relevant_content}
 
-                USER'S BUDGET INFORMATION (ALWAYS USE THIS):
+                USER'S BUDGET INFORMATION (ONLY USE WHEN RELEVANT):
                 {self.budget_info}
 
-                SOURCE INFORMATION (CITE THESE):
+                SOURCE INFORMATION (FOR YOUR REFERENCE, DO NOT CITE IN RESPONSE BODY):
                 {source_info}
 
                 CONVERSATION HISTORY:
@@ -487,15 +506,34 @@ class NDISAssistantBotOpenAI:
                 {query}
 
                 Instructions:
-                1. First, analyze the provided knowledge base content
-                2. Construct your response primarily using knowledge base information
-                3. ALWAYS incorporate the user's budget information in your response
-                4. ALWAYS cite sources using [Source: Document Name, Page X] format
-                5. Write a natural, expert-level response
-                6. Do not mention the knowledge base or data sources directly, but DO cite them
-                7. Use proper markdown formatting for clarity
-                8. Provide with some apropriate link form the ### 🌐 Additional Information Sources in the end of the response (WHEN NEEDED)
-                """}
+                    - Use the knowledge base content as the foundation for NDIS-specific details, but integrate it naturally without referencing or citing it directly in the response body (e.g., avoid “[Source: Document Name, Page X]”). Blend it with your own knowledge to provide a detailed, intuitive, and personalized answer.
+
+                    - Expand on the knowledge base with practical explanations, real-world examples, and scenarios that make the information relatable and comprehensive, addressing the user’s potential needs or goals.
+
+                    - Only include budget information if the question directly relates to funding, budgeting, or specific supports in the user's NDIS plan, formatted concisely (e.g., bullet list). When included, personalize the response by explaining how the user can apply their funding.
+
+                    - Write a friendly, natural response as a human NDIS support agent would, adapting the structure to the query's nature (e.g., brief paragraph for simple questions, lists for steps, or detailed explanation for complex topics).
+
+                    - Do not mention the knowledge base or use citations in the response body. If referencing external web or X sources, use natural phrasing (e.g., “The NDIS website explains…”) and cite at the paragraph’s end using or. If using your own knowledge, no attribution is needed unless citing a specific external source.
+
+                    - Include the following elements in a cohesive, conversational flow:
+
+                    - A clear, detailed answer to the question, integrating NDIS rules naturally and expanding with your own understanding to make it engaging and user-focused.
+
+                    - Relevant context, examples, or budget details (if applicable) to enhance clarity and personalization, addressing the user’s potential goals or challenges.
+
+                    - Practical next steps or guidance, using lists if procedural, tailored to the user’s situation.
+                    
+                    - A mandatory “Source” section before “For More Information”, listing all unique knowledge base documents and pages used in the response, formatted as “Source: (Document Name, Page X)” for each source. Consolidate sources to avoid repetition (e.g., list a document and page only once). This section must always be included when knowledge base content is used.
+                    
+                    - A mandatory “For More Information” section list all relevant links from the ``🌐 Additional Resources`` list, based on the query’s topic (e.g., NDIS Main Site for general info, Admin Review Tribunal for appeals, etc.). Include only the links without source information. Ensure at least one link is included.
+                    
+                    - End with a positive, encouraging note (e.g., “Let me know how I can assist further!”).
+                    
+                    - Use markdown flexibly for clarity (e.g., **bold** for emphasis, bullet points or numbered lists for steps).
+                    
+                    - Ensure the “Source” section and “For More Information” section are not omitted, listing all relevant knowledge base sources and links in the specified format.
+                    """}
             ]
 
             # Call OpenAI Chat API with retry logic
@@ -508,7 +546,7 @@ class NDISAssistantBotOpenAI:
                         model=self.chat_model,
                         messages=messages,
                         temperature=temperature,
-                        max_tokens=1024,
+                        max_tokens=3500,
                         top_p=1.0
                     )
                     
@@ -530,7 +568,7 @@ class NDISAssistantBotOpenAI:
                         time.sleep(2 ** attempt)  # Exponential backoff
                     else:
                         logger.error(f"Failed to generate response after {max_retries} attempts")
-                        return "I apologize, but I'm having trouble connecting to my knowledge base right now. Could you please try again in a moment?"
+                        return "I apologize, but I'm having some tecnical issue right now. Could you please try again in a moment?"
 
         except Exception as e:
             logger.error(f"Error in answering question: {str(e)}")
@@ -651,13 +689,7 @@ def main(
             
         else:
             response_dict["NDIS Assistant"] = chatbot.answer_question(user_query)
-            sources = chatbot.get_sources()  # Assuming this returns a list of source dicts
-            if sources:
-                response_dict["Sources"] = [
-                    f"{i}. {source['document']} (Page {source['page']}) — Score: {source['score']}"
-                    for i, source in enumerate(sources[:3], 1)
-                ]
-
+            
         return response_dict
 
     except Exception as e:
@@ -671,9 +703,30 @@ def main(
 if __name__ == "__main__":
     # Example usage
     sample_history = "User: What’s my plan?\nAssistant: I need more details to assist!"
-    sample_input = "do you know my name?"
+    sample_input = "give me ecase releted sites"
     sample_embeddings = "D:\\Sam_Project\\knowledge_base_embeddings_openai.npz"
-    sample_budget = "Your NDIS plan includes $5000 for therapy and $2000 for equipment."
+    sample_budget = """
+                    {
+                    "entries": [
+                        {
+                        "category": "Core Supports",
+                        "subcategory": "Assistance with daily life",
+                        "amount": 200
+                        },
+                        {
+                        "category": "Capacity Building Supports",
+                        "subcategory": "Improved living arrangements",
+                        "amount": 500
+                        },
+                        {
+                        "category": "Capacity Building Supports",
+                        "subcategory": "Finding and keeping a job",
+                        "amount": 600
+                        }
+                    ],
+                    "startDate": "2025-01-01",
+                    "endDate": "2025-12-31"
+                    }"""
     
     response = main(sample_history, sample_input, sample_embeddings, sample_budget)
     # Print response in a formatted way for demonstration
